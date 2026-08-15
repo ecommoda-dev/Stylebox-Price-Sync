@@ -619,7 +619,7 @@ body {
     <!-- About — mandatory -->
     <button class="hbtn" id="aboutBtn" onclick="openAbout()">ℹ️ عن الأداة</button>
     <!-- Version + Changelog — mandatory -->
-    <button class="hbtn ver-btn" onclick="openChangelog()">v1.0.0 📋</button>
+    <button class="hbtn ver-btn" onclick="openChangelog()">v1.0.1 📋</button>
     <!-- Settings — mandatory, always last -->
     <button class="hbtn" id="settingsBtn" onclick="openSettings()">⚙️ الإعدادات</button>
   </div>
@@ -665,7 +665,16 @@ body {
       <!-- Latest version — blue badge -->
       <div class="cl-version-block">
         <div class="cl-version-row">
-          <span class="cl-ver-badge">v1.0.0</span><!-- ← MUST match header button -->
+          <span class="cl-ver-badge">v1.0.1</span><!-- ← MUST match header button -->
+          <span class="cl-ver-date">15-08-2026</span>
+        </div>
+        <ul class="cl-items">
+          <li class="cl-item"><span class="cl-tag fix">إصلاح</span><span>زرار حفظ الإعدادات مكنش شغّال — استدعاء بيتصل بـ updateLoginSettingsBtn() بدل الاسم الصح updateLoginSettingsBtnState()، فكان بيكسر الحفظ في نص الطريق</span></li>
+        </ul>
+      </div>
+      <div class="cl-version-block">
+        <div class="cl-version-row">
+          <span class="cl-ver-badge old">v1.0.0</span>
           <span class="cl-ver-date">15-08-2026</span>
         </div>
         <ul class="cl-items">
@@ -1059,7 +1068,7 @@ function saveSettings() {
   localStorage.setItem(LS_ADMIN_URL, adminUrl.replace(/\/$/, ''));
 
   updateSettingsBtn();
-  updateLoginSettingsBtn();
+  updateLoginSettingsBtnState();
   closeSettings();
   showToast('تم حفظ الإعدادات ✓', 'success');
   loadEmployeesList();
@@ -1158,7 +1167,7 @@ async function apiGet(action, params = {}) {
 
 // ── Init ──────────────────────────────────────────────────────
 updateSettingsBtn();
-updateLoginSettingsBtn(); // defined in 22_login-screen.html block
+updateLoginSettingsBtnState(); // defined in 22_login-screen.html block
 loadEmployeesList();       // defined in 22_login-screen.html block
 
 
