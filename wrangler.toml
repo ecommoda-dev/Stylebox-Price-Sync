@@ -25,7 +25,7 @@ SHOP_DOMAIN       = "6c7e1a-53.myshopify.com"
 WP_BASE_URL       = "https://stylebox.online"
 PRICE_DIFFERENCE  = "100"
 
-# ⚠️ الأسرار مبتتكتبش هنا أبدًا.
+# ⚠️ الأسرار مبتتكتبش هنا أبدًا
 #    Worker → Settings → Variables and Secrets → علّم Secret
 #    وبعدها: Deployments → Version History → ⋯ → Promote version
 #    المطلوب: WORKER_SECRET · CLIENT_ID · CLIENT_SECRET · SYNC_SECRET
