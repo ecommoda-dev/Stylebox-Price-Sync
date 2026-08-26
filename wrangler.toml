@@ -1,0 +1,31 @@
+name               = "stylebox-price-sync-worker"
+main               = "index.js"
+compatibility_date = "2025-01-01"
+workers_dev        = true
+
+[observability]
+enabled = true
+
+# ─── D1 ──────────────────────────────────────────────
+[[d1_databases]]
+binding       = "DB"
+database_name = "ecommoda-dev-logs"
+database_id   = "90db62d3-bd7e-4d92-912b-10fc78eeb565"
+
+# ─── Vars (نص عادي — مش أسرار) ────────────────────────
+# القيم اتاخدت من: SHOP_DOMAIN (ecommoda-constants §1) · WP_BASE_URL
+# (woocommerce-sync-helper — stylebox.online) · PRICE_DIFFERENCE (متأكَّد
+# من extra.priceDifference في صفوف D1 حية بتاريخ 26-08-2026).
+# ⚠️ PRICE_DIFFERENCE ليها fallback في الكود (getPriceDiff → 0 لو غابت) —
+# لو القيمة هنا غلط أو ضاعت، الأداة هتفضل شغالة وتكتب "synced" بصمت
+# بسعر من غير أي فرق. اتأكد منها بعينك في Settings → Variables قبل ما
+# تعتبر النقل خلص (راجع تسليمة النقل).
+[vars]
+SHOP_DOMAIN       = "6c7e1a-53.myshopify.com"
+WP_BASE_URL       = "https://stylebox.online"
+PRICE_DIFFERENCE  = "100"
+
+# ⚠️ الأسرار مبتتكتبش هنا أبدًا.
+#    Worker → Settings → Variables and Secrets → علّم Secret
+#    وبعدها: Deployments → Version History → ⋯ → Promote version
+#    المطلوب: WORKER_SECRET · CLIENT_ID · CLIENT_SECRET · SYNC_SECRET
