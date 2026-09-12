@@ -1,11 +1,15 @@
-// EcomModa — Stylebox Price Sync (v1.0.0)
-// skills: worker-builder v1.0.0 · constants v1.1.0 — 26-08-2026
+// EcomModa — Stylebox Price Sync (v1.1.0)
+// skills: worker-builder v3.0.0 · constants v1.1.0 — 12-09-2026
 
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
 // §CONSTANTS
 // ══════════════════════════════════════════════════════
 const TOOL_NAME = 'stylebox_price_sync';
+
+// بيرجع من ?action=get_config — الواجهة بتقارنه بـ MIN_WORKER_VERSION عندها،
+// فـ Promote ناقص أو rollback بيبان بدل ما يفضل صامت.
+const WORKER_VERSION = '1.1.0';
 
 // ⚠️ TEMPORARY — bulk_sync_all (أضيفت [تاريخ اليوم]) لمرة واحدة/دورية لعمل
 // سحب شامل على كل الـ variants في شوبيفاي بدل ما ننتظر الويبهوك واحد واحد.
@@ -116,19 +120,57 @@ async function getAccessToken(env) {
   return data.access_token;
 }
 
-async function shopifyGQL(env, token, query, variables = {}) {
-  const resp = await fetch(
-    `https://${env.SHOP_DOMAIN}/admin/api/2026-01/graphql.json`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': token,
-      },
-      body: JSON.stringify({ query, variables }),
+// 🔴 النسخة المعتمدة (worker-builder Step 5A ①) — بترمي على: فشل شبكة ·
+//    HTTP status · رد مش JSON · data.errors · data فاضية، + إعادة محاولة على
+//    THROTTLED. النسخة القديمة كانت `return resp.json()` وبس، يعني 401/429/5xx
+//    من شوبيفاي كانت بتعدّي كأنها رد سليم وأي throttle بيقتل صفحة كاملة من
+//    المزامنة الشاملة برسالة مبهمة.
+async function shopifyGQL(env, token, query, variables = {}, opName = 'shopify') {
+  const MAX_ATTEMPTS = 3;
+  let lastErr = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let resp, text;
+    try {
+      resp = await fetch(`https://${env.SHOP_DOMAIN}/admin/api/2026-01/graphql.json`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
+        body:    JSON.stringify({ query, variables }),
+      });
+      text = await resp.text();
+    } catch (e) {
+      lastErr = new Error(`${opName}: فشل الاتصال بشوبيفاي — ${e.message}`);
+      if (attempt < MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 400 * attempt)); continue; }
+      throw lastErr;
     }
-  );
-  return resp.json();
+
+    if (!resp.ok) {
+      const retriable = resp.status === 429 || resp.status >= 500;
+      lastErr = new Error(`${opName}: شوبيفاي ردّت HTTP ${resp.status} — ${text.slice(0, 180)}`);
+      if (retriable && attempt < MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 700 * attempt)); continue; }
+      throw lastErr;
+    }
+
+    let data;
+    try { data = JSON.parse(text); }
+    catch { throw new Error(`${opName}: رد شوبيفاي مش JSON صالح — ${text.slice(0, 180)}`); }
+
+    if (Array.isArray(data.errors) && data.errors.length) {
+      const codes = data.errors.map(e => e?.extensions?.code).filter(Boolean);
+      lastErr = new Error(
+        `${opName}: ${data.errors.map(e => e.message).join(' | ')}` +
+        (codes.length ? ` [${codes.join(',')}]` : '')
+      );
+      if (codes.includes('THROTTLED') && attempt < MAX_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, 1200 * attempt)); continue;
+      }
+      throw lastErr;
+    }
+
+    if (!data.data) throw new Error(`${opName}: رد شوبيفاي بدون data — ${text.slice(0, 180)}`);
+    return data;
+  }
+  throw lastErr || new Error(`${opName}: فشل غير معروف`);
 }
 
 // ══════════════════════════════════════════════════════
@@ -188,38 +230,123 @@ async function writeLog(db, entry) {
   ).run();
 }
 
-async function getLogs(db, { tool = null, employee = null, type = null, search = null, limit = 100, offset = 0 } = {}) {
-  let sql = "SELECT * FROM logs WHERE type NOT IN ('login','logout')";
+const LOG_EXPORT_MAX = 2000;   // سقف التصدير — بيرجع للواجهة كـ `cap`
+
+/**
+ * بنّاء شرط الفلترة الموحّد للسجل — التلات دوال تحته بتستخدمه، فمفيش SQL
+ * مكرر يتعتّق في واحدة منهم ويسيب التانية.
+ *
+ * employees[] / types[] → قوايم (multi-select إلزامي في أي شاشة فيها جدول،
+ * والسجل جدول). employee / type المفردين لسه مقبولين للتوافق الرجعي.
+ *
+ * ⚠️ **انحراف مقصود عن نسخة المهارة:** النسخة القياسية بتبحث في `order_name`
+ * — والأداة دي مالهاش أوردرات خالص (بتزامن أسعار variants)، فعمود الهوية هنا
+ * هو `sku`. و`searchNotes` منفصل عن `search` عشان الواجهة فيها مربعين بحث
+ * (SKU · الملحوظات) — مربع واحد للاتنين كان بيخلي البحث بالـ SKU يرجّع صفوف
+ * الملحوظات بس فيها النص.
+ *
+ * ⚠️ dateFrom / dateTo بيتقارنوا بـ substr(timestamp,1,10) — يعني **UTC**،
+ * والعرض بتوقيت القاهرة (UTC+3/+2). فرق الساعات ممكن يحط عملية بعد ٩ مساءً
+ * بتوقيت القاهرة في يوم UTC اللي بعده. مقبول لفلتر بالأيام — **بس مكتوب**،
+ * عشان مايتكتشفش كباج بعدين.
+ *
+ * login/logout مستثنيين في SQL دايمًا — مش client-side.
+ */
+function buildLogFilterSQL(select, {
+  tool        = null,
+  employee    = null, employees   = null,
+  type        = null, types       = null,
+  search      = null, searchNotes = null,
+  dateFrom    = null, dateTo      = null,
+} = {}) {
+  let sql = `${select} FROM logs WHERE type NOT IN ('login','logout')`;
   const b = [];
+
+  const emps = Array.isArray(employees) && employees.length ? employees : (employee ? [employee] : []);
+  const typs = Array.isArray(types)     && types.length     ? types     : (type     ? [type]     : []);
+
   if (tool) { sql += ' AND tool = ?'; b.push(tool); }
-  if (employee) { sql += ' AND employee = ?'; b.push(employee); }
-  if (type) { sql += ' AND type = ?'; b.push(type); }
-  if (search) { sql += ' AND (sku LIKE ? OR notes LIKE ?)'; b.push(`%${search}%`, `%${search}%`); }
-  sql += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-  b.push(Math.min(limit, 100), offset);
-  return (await db.prepare(sql).bind(...b).all()).results;
+  if (emps.length) { sql += ` AND employee IN (${emps.map(() => '?').join(',')})`; b.push(...emps); }
+  if (typs.length) { sql += ` AND type IN (${typs.map(() => '?').join(',')})`;     b.push(...typs); }
+  if (search)      { sql += ' AND sku LIKE ?';                 b.push(`%${search}%`); }
+  if (searchNotes) { sql += ' AND notes LIKE ?';               b.push(`%${searchNotes}%`); }
+  if (dateFrom)    { sql += ' AND substr(timestamp, 1, 10) >= ?'; b.push(dateFrom); }
+  if (dateTo)      { sql += ' AND substr(timestamp, 1, 10) <= ?'; b.push(dateTo); }
+
+  return { sql, b };
 }
 
-async function getLogsCount(db, { tool = null, employee = null, type = null, search = null } = {}) {
-  let sql = "SELECT COUNT(*) as total FROM logs WHERE type NOT IN ('login','logout')";
-  const b = [];
-  if (tool) { sql += ' AND tool = ?'; b.push(tool); }
-  if (employee) { sql += ' AND employee = ?'; b.push(employee); }
-  if (type) { sql += ' AND type = ?'; b.push(type); }
-  if (search) { sql += ' AND (sku LIKE ? OR notes LIKE ?)'; b.push(`%${search}%`, `%${search}%`); }
+// ⚠️ قائمة **مقفولة** — القيمة جاية من العميل وبتتلزق في نص SQL مباشرةً
+//    (ORDER BY مابيقبلش bind). أي قيمة بره القايمة بترجع للافتراضي بدون خطأ.
+// ⚠️ المفاتيح لازم تطابق `data-sort-key` في الواجهة **حرفيًا** — مفتاح مش في
+//    القايمة بيرجع للافتراضي في صمت، فالعمود يبان إنه اترتّب وهو مااترتّبش.
+const LOG_SORT_COLUMNS = {
+  date: 'timestamp', time: 'timestamp', employee: 'employee',
+  type: 'type', sku: 'sku', result: `json_extract(extra, '$.result')`,
+};
+
+function orderByClause(sortBy, sortDir) {
+  const col = LOG_SORT_COLUMNS[String(sortBy || '')] || 'timestamp';
+  const dir = String(sortDir || '').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  // 🔴 كاسر تعادل إلزامي: من غيره صفوف نفس القيمة بترتيب عشوائي بين الصفحات،
+  //    والصف الواحد ممكن يظهر في صفحتين **أو مايظهرش خالص**.
+  return col === 'timestamp' ? ` ORDER BY timestamp ${dir}`
+                             : ` ORDER BY ${col} ${dir}, timestamp DESC`;
+}
+
+/**
+ * صفحة واحدة للعرض — server-side filtering + pagination. السقف 100/صفحة
+ * مفروض هنا، فأي `limit` أكبر بيترجع 100 **من غير ما الواجهة تعرف** — عشان
+ * كده الواجهة لازم تستخدم pagination مش limit كبير.
+ */
+async function getLogs(db, { limit = 100, offset = 0, sortBy, sortDir, ...filters } = {}) {
+  const { sql, b } = buildLogFilterSQL('SELECT *', filters);
+  const q = sql + orderByClause(sortBy, sortDir) + ' LIMIT ? OFFSET ?';
+  return (await db.prepare(q)
+    .bind(...b, Math.min(limit, 100), Math.max(offset, 0)).all()).results;
+}
+
+/** العدّ الكلي المطابق للفلتر — بيتنادى بالتوازي مع getLogs ومع getLogsExport. */
+async function getLogsCount(db, filters = {}) {
+  const { sql, b } = buildLogFilterSQL('SELECT COUNT(*) as total', filters);
   const row = await db.prepare(sql).bind(...b).first();
   return row?.total ?? 0;
 }
 
-async function getLogsExport(db, { tool = null, employee = null, type = null, search = null } = {}) {
-  let sql = "SELECT * FROM logs WHERE type NOT IN ('login','logout')";
-  const b = [];
-  if (tool) { sql += ' AND tool = ?'; b.push(tool); }
-  if (employee) { sql += ' AND employee = ?'; b.push(employee); }
-  if (type) { sql += ' AND type = ?'; b.push(type); }
-  if (search) { sql += ' AND (sku LIKE ? OR notes LIKE ?)'; b.push(`%${search}%`, `%${search}%`); }
-  sql += ' ORDER BY timestamp DESC LIMIT 2000';
-  return (await db.prepare(sql).bind(...b).all()).results;
+/**
+ * كل السجل المطابق للتصدير — لحد LOG_EXPORT_MAX.
+ * ⚠️ الدالة دي **بتقص في السكوت** بطبيعتها. المسؤولية اللي جنبها إلزامية:
+ * الـ endpoint لازم يرجّع `cap` و`total` و`truncated` كمان.
+ */
+async function getLogsExport(db, filters = {}) {
+  const { sql, b } = buildLogFilterSQL('SELECT *', filters);
+  // ⚠️ التصدير والعدّ بيتجاهلوا الترتيب عن قصد — العدّ مالوش ترتيب، والتصدير
+  //    بياخد ترتيب السيرفر الافتراضي.
+  const q = sql + ' ORDER BY timestamp DESC LIMIT ?';
+  return (await db.prepare(q).bind(...b, LOG_EXPORT_MAX).all()).results;
+}
+
+/**
+ * بيقرا فلاتر السجل من الـ query string — CSV للقوايم
+ * (employees=ahmed,sara · types=synced,sku_mismatch).
+ * مصدر **واحد** بتستخدمه التلات endpoints، فمفيش endpoint بيفلتر بشكل مختلف
+ * عن اللي جنبه (وده بالظبط اللي بيخلي التصدير ينزّل غير المعروض).
+ */
+function logParamsFrom(url, tool) {
+  const csv = (k) => (url.searchParams.get(k) || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const employees = csv('employees'), types = csv('types');
+  return {
+    tool,
+    employees:   employees.length ? employees : null,
+    employee:    url.searchParams.get('employee')    || null,
+    types:       types.length ? types : null,
+    type:        url.searchParams.get('type')        || null,
+    search:      url.searchParams.get('search')      || null,
+    searchNotes: url.searchParams.get('searchNotes') || null,
+    dateFrom:    url.searchParams.get('dateFrom')    || null,
+    dateTo:      url.searchParams.get('dateTo')      || null,
+  };
 }
 // ══════════════════════════════════════════════════════
 // END SHARED BLOCK
@@ -296,12 +423,22 @@ async function getLastSyncedPrice(db, variantId) {
   ).bind(variantId).first();
 }
 
+// 🔴 upsert مش UPDATE: الصف بيتعمله INSERT جوّه claimIfNewer **بس** — واللي
+// بتتخطّى بالكامل في مسار no_triggered_at_header (الهيدر مش موجود). ساعتها
+// الـ UPDATE كان بيأثّر على **صفر صفوف في صمت**، فالكاش عمره ما يتكتب و
+// no_price_change_skipped عمرها ما تتحقق: WooCommerce بياخد نداء كتابة في كل
+// حدث. (جردة 12-09-2026 — W-06)
 async function updateLastSyncedPrice(db, variantId, regularPrice, salePrice) {
+  const now = new Date().toISOString();
   await db.prepare(`
-    UPDATE stylebox_price_sync_state
-    SET last_synced_regular_price = ?, last_synced_sale_price = ?
-    WHERE variant_id = ?
-  `).bind(regularPrice, salePrice ?? '', variantId).run();
+    INSERT INTO stylebox_price_sync_state
+      (variant_id, last_synced_regular_price, last_synced_sale_price, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(variant_id) DO UPDATE SET
+      last_synced_regular_price = excluded.last_synced_regular_price,
+      last_synced_sale_price    = excluded.last_synced_sale_price,
+      updated_at                = excluded.updated_at
+  `).bind(variantId, regularPrice, salePrice ?? '', now).run();
 }
 
 // ══════════════════════════════════════════════════════
@@ -326,6 +463,15 @@ export default {
 
     // 2. WORKER_SECRET check — ALWAYS second (كل حاجة تانية في الـ Worker ده،
     // بما فيها bulk_sync_all تحت — نفس مستوى الحماية زي باقي الإدارة)
+    // 🔴 حارس السر الغايب — **قبل** فحص الـ auth بالظبط. القالب تحت بينتج
+    //    السلسلة الحرفية "Bearer undefined" لو السر مش مضبوط (سر اتضاف من غير
+    //    Promote · اتمسح بالغلط · Worker شبح)، يعني أي طلب بالهيدر ده **بيعدّي**
+    //    على أداة بتكتب أسعار وبتقرا السجل كله. الحالة اللي المفروض تبقى
+    //    "كل حاجة 401" كانت بتتحوّل لـ "الحماية اتشالت". (worker-builder Step 8)
+    if (typeof env.WORKER_SECRET !== 'string' || !env.WORKER_SECRET.trim()) {
+      return json({ ok: false, error: 'WORKER_SECRET غير مضبوط على الـ Worker — ضِفه من Settings → Variables وبعدها Promote', step: 'env' }, 500, request);
+    }
+
     const auth = request.headers.get('Authorization');
     if (!auth || auth !== `Bearer ${env.WORKER_SECRET}`) {
       return json({ error: 'Unauthorized' }, 401, request);
@@ -385,34 +531,54 @@ export default {
       }
       // ──────────────────────────────────────────────────────
 
+      // ─── §CONFIG-ENDPOINT ─────────────────────────────────
+      // الواجهة بتقارن النسخة دي بـ MIN_WORKER_VERSION عندها — بيكشف Promote
+      // ناقص أو rollback، اللي بيخلّي الأداة "شغّالة" وهي بترجّع عقد قديم.
+      if (action === 'get_config') {
+        return json({ ok: true, version: WORKER_VERSION, tool: TOOL_NAME }, 200, request);
+      }
+      // ──────────────────────────────────────────────────────
+
       // ─── §LOG-ENDPOINTS ───────────────────────────────────
+      // التلاتة بيقروا الفلاتر من **مصدر واحد** (logParamsFrom)، فمفيش
+      // endpoint بيفلتر بشكل مختلف عن اللي جنبه.
       if (action === 'get_logs') {
+        const p = logParamsFrom(url, TOOL_NAME);
+        // 🔴 parseInt('abc') → NaN · Math.min(NaN,100) → NaN → بيوصل لـ D1 كـ
+        //    bind ويرجّع خطأ غامض. الحراسة إلزامية، مش تجميل.
+        const limitRaw  = parseInt(url.searchParams.get('limit')  || '100', 10);
+        const offsetRaw = parseInt(url.searchParams.get('offset') || '0',   10);
+        const limit  = Number.isFinite(limitRaw)  ? Math.min(Math.max(limitRaw, 1), 100) : 100;
+        const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
         const entries = await getLogs(env.DB, {
-          tool: TOOL_NAME,
-          type: url.searchParams.get('type') || null,
-          search: url.searchParams.get('search') || null,
-          limit: parseInt(url.searchParams.get('limit') || '100'),
-          offset: parseInt(url.searchParams.get('offset') || '0'),
+          ...p, limit, offset,
+          sortBy:  url.searchParams.get('sortBy'),
+          sortDir: url.searchParams.get('sortDir'),
         });
         return json({ ok: true, entries }, 200, request);
       }
 
       if (action === 'get_logs_count') {
-        const total = await getLogsCount(env.DB, {
-          tool: TOOL_NAME,
-          type: url.searchParams.get('type') || null,
-          search: url.searchParams.get('search') || null,
-        });
+        const total = await getLogsCount(env.DB, logParamsFrom(url, TOOL_NAME));
         return json({ ok: true, total }, 200, request);
       }
 
+      // 🔴 عقد إلزامي: الصفوف **والحقيقة** مع بعض. getLogsExport بتقصّ عند
+      //    LOG_EXPORT_MAX في السكوت، فمن غير cap/total/truncated الواجهة بتقول
+      //    "تم تصدير N عملية ✓" على **ملف ناقص**. (html-builder Standards #30)
+      //    والعدّ بيتنادى **بنفس فلاتر التصدير بالظبط** — فلاتر مختلفة بتطلّع
+      //    نسبة كذّابة، وهي أسوأ من مفيش رقم.
       if (action === 'get_logs_export') {
-        const entries = await getLogsExport(env.DB, {
-          tool: TOOL_NAME,
-          type: url.searchParams.get('type') || null,
-          search: url.searchParams.get('search') || null,
-        });
-        return json({ ok: true, entries }, 200, request);
+        const p = logParamsFrom(url, TOOL_NAME);
+        const [entries, total] = await Promise.all([
+          getLogsExport(env.DB, p),
+          getLogsCount(env.DB, p),
+        ]);
+        return json({
+          ok: true, entries,
+          cap: LOG_EXPORT_MAX, total, truncated: total > LOG_EXPORT_MAX,
+        }, 200, request);
       }
       // ──────────────────────────────────────────────────────
 
@@ -689,7 +855,7 @@ async function runBulkSyncPage(env, cursor) {
       }
     }
   `;
-  const data = await shopifyGQL(env, token, query, { cursor });
+  const data = await shopifyGQL(env, token, query, { cursor }, 'productVariants');
   const conn = data?.data?.productVariants;
   if (!conn) {
     throw new Error('productVariants query failed: ' + JSON.stringify(data?.errors || data));
