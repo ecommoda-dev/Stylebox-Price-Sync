@@ -1,4 +1,4 @@
-// EcomModa — Stylebox Price Sync (v1.1.0)
+// EcomModa — Stylebox Price Sync (v1.2.0)
 // skills: worker-builder v3.0.0 · constants v1.1.0 — 12-09-2026
 
 // ══════════════════════════════════════════════════════
@@ -9,13 +9,24 @@ const TOOL_NAME = 'stylebox_price_sync';
 
 // بيرجع من ?action=get_config — الواجهة بتقارنه بـ MIN_WORKER_VERSION عندها،
 // فـ Promote ناقص أو rollback بيبان بدل ما يفضل صامت.
-const WORKER_VERSION = '1.1.0';
+const WORKER_VERSION = '1.2.0';
 
 // ⚠️ TEMPORARY — bulk_sync_all (أضيفت [تاريخ اليوم]) لمرة واحدة/دورية لعمل
 // سحب شامل على كل الـ variants في شوبيفاي بدل ما ننتظر الويبهوك واحد واحد.
 // عايزين نسيبها موجودة (بعكس backfill_batch اللي اتشالت) لأن الأداة هتستخدمها
 // أكتر من مرة في المستقبل — لكن هي محمية بنفس WORKER_SECRET بتاع كل حاجة تانية.
-const BULK_SYNC_PAGE_SIZE = 40; // عدد الـ variants اللي بيتقروا من شوبيفاي في كل نداء (مش بالضرورة كلهم مربوطين بـ WooCommerce)
+// ─── سلسلة السقوف التلاتة — التلاتة مع بعض، ولا واحد يتغيّر لوحده ───
+// (worker-builder Step 5A ⑪ — ممنوع يتقال رقم منهم لوحده)
+// ① الواجهة       مفيش CHUNK هنا: الواجهة بتنده **صفحة واحدة** في كل نداء
+//                 والـ cursor بيمسك المكان، فالـ pagination نفسه هو التقسيم.
+// ② الـ Worker    BULK_SYNC_PAGE_SIZE = 40 ← حارس **وقت**: ٤٠ variant، والمربوط
+//                 منهم بياخد نداء WooCommerce أو اتنين، لازم يخلّصوا جوّه مهلة
+//                 الواجهة (API_TIMEOUT_MS = 90 ث).
+// ③ شوبيفاي       تكلفة الاستعلام: productVariants(first:40) + metafield واحد
+//                 ≈ ٤٤ نقطة، والميزانية الآمنة ٧٠٠ (constants §1). يعني الحد
+//                 الفعلي هنا **وقت WooCommerce**، مش تكلفة شوبيفاي.
+//                 التكلفة الحقيقية بترجع في diag من throttleStatus.
+const BULK_SYNC_PAGE_SIZE = 40;
 
 // ══════════════════════════════════════════════════════
 // §CORS — Option B (write tool, strict allowlist)
@@ -44,6 +55,19 @@ function json(data, status = 200, request = null) {
   const headers = { 'Content-Type': 'application/json' };
   Object.assign(headers, request ? getCORS(request) : { 'Access-Control-Allow-Origin': '*' });
   return new Response(JSON.stringify(data), { status, headers });
+}
+
+// ── §HELPERS::safeWriteLog ──
+// 🔴 فشل D1 مايتبلعش. `.catch(() => {})` معناها إن العملية حصلت (أو اترفضت)
+//    ومفيش أي أثر خالص. مفيش مكان تاني نسجّل فيه فشل السجل نفسه، فبيروح على
+//    console — observability مفعّلة في wrangler.toml — وبيرجّع false عشان
+//    المنادي يقدر يرجّعه للواجهة كـ logged:false. (Step 5A ⑦)
+async function safeWriteLog(db, entry) {
+  try { await writeLog(db, entry); return true; }
+  catch (e) {
+    console.error('[writeLog FAILED]', entry.tool, entry.type, entry.sku || '', e.message);
+    return false;
+  }
 }
 
 // ── §HELPERS::safeEqual ──
@@ -87,6 +111,32 @@ function findMetafield(metafieldsArr, namespace, key) {
   const mf = metafieldsArr.find(m => m.namespace === namespace && m.key === key);
   if (!mf || mf.value === null || mf.value === undefined || mf.value === '') return null;
   return String(mf.value);
+}
+
+// ── §HELPERS::assertEnv ──
+// متغير ناقص لازم يوقف العملية **برسالة باسمه**. قبل كده WP_BASE_URL الناقص
+// كان بيرمي TypeError مبهم (`.replace of undefined`) وبيتسجّل unexpected_error،
+// وSYNC_SECRET الناقص كان بيبعت هيدر undefined وWordPress بيرد 401 فيتسجّل
+// wp_update_failed — الاتنين تشخيصهم غلط. (Step 5A ⑧)
+const ENV_REQUIRED = {
+  shopify: ['SHOP_DOMAIN', 'CLIENT_ID', 'CLIENT_SECRET'],
+  woo:     ['WP_BASE_URL', 'SYNC_SECRET'],
+};
+
+function assertEnv(env, ...groups) {
+  const missing = [];
+  for (const g of groups) {
+    for (const key of (ENV_REQUIRED[g] || [])) {
+      if (env[key] === undefined || env[key] === null || String(env[key]).trim() === '') missing.push(key);
+    }
+  }
+  if (!env.DB) missing.push('DB (D1 binding)');
+  if (missing.length) {
+    throw new Error(
+      `متغيرات ناقصة في الـ Worker: ${missing.join('، ')} — ضِفها من ` +
+      `Dashboard → Settings → Variables ثم Promote النسخة. (شغّل ?action=diag)`
+    );
+  }
 }
 
 // ── §HELPERS::getPriceDiff ── (مصدر واحد — يُستخدم من الويبهوك ومن bulk_sync_all)
@@ -354,10 +404,14 @@ function logParamsFrom(url, tool) {
 
 // ══════════════════════════════════════════════════════
 // §WOOCOMMERCE
-// ⚠️ الـ endpoint ده (variation-price) لسه مش موجود على WordPress —
-// لازم يتضاف على نفس الـ plugin/mu-plugin اللي فيه variation-stock حالياً
-// قبل ما الأداة دي تشتغل. الشكل المتوقع تحت (GET بيرجع regular_price +
-// sale_price + sku + gtin، POST بياخد نفس الحقول ويحدّثهم).
+// ✅ الـ endpoint (variation-price) **موجود وشغّال على WordPress** — اتأكد من
+// صفوف D1 حية (type='synced' · extra.wcResult.success:true). التعليق القديم
+// هنا كان بيقول إنه "لسه مش موجود" وكان فات أوانه، واتسيّب وقت النقل لـ git
+// عن قصد (نقل بايت ببايت) — اتصحّح في جردة 12-09-2026 لأنه بقى مصيدة لأي حد
+// يفتح الملف.
+// الشكل: GET بيرجع regular_price + sale_price + sku + gtin · POST بياخد
+// regular_price + sale_price ويحدّثهم. الهيدر X-Sync-Header-Secret (مش
+// X-EcomModa-Secret القياسي — سلوك قائم متعمّد، راجع CLAUDE.md).
 // ══════════════════════════════════════════════════════
 async function wcGetVariationPrice(env, variationId) {
   const res = await fetch(
@@ -400,21 +454,55 @@ async function wcUpdateVariationPrice(env, variationId, regularPrice, salePrice)
 // ══════════════════════════════════════════════════════
 
 // ── §PRICE-SYNC-STATE::claimIfNewer ──
+// 🔴 الشرط null-safe إلزامي: في SQLite أي مقارنة مع NULL بترجّع NULL (falsy)،
+// فصف `last_triggered_at = NULL` — بيحصل بعد releaseClaim، أو من صف اتعمله
+// upsert في مسار no_triggered_at_header — كان هيخلّي الحجز **يفشل للأبد**
+// والـ variant يترفض بـ stale_event_skipped على كل حدث جديد.
 // عملية atomic واحدة (INSERT .. ON CONFLICT .. WHERE) — لو مفيش سطر
 // لنفس الـ variant_id بيتعمله INSERT عادي. لو موجود، التحديث بيحصل بس
 // لو triggered_at الجديد أحدث من المخزّن — لو الشرط فشل، res.meta.changes
 // بترجع 0 يعني الحدث ده قديم ولازم يتجاهل.
 async function claimIfNewer(db, variantId, triggeredAt) {
   const now = new Date().toISOString();
+  // القيمة القديمة بتتقرا **قبل** الحجز عشان نقدر نرجّعها لو الشغل فشل
+  // (releaseClaim تحت). القراءة دي مش جزء من الذرّية — الحارس الذرّي هو
+  // الـ WHERE في الـ INSERT تحت؛ دي بس بتجيب قيمة التراجع.
+  const prevRow = await db.prepare(
+    'SELECT last_triggered_at FROM stylebox_price_sync_state WHERE variant_id = ?'
+  ).bind(variantId).first();
+
   const res = await db.prepare(`
     INSERT INTO stylebox_price_sync_state (variant_id, last_triggered_at, updated_at)
     VALUES (?, ?, ?)
     ON CONFLICT(variant_id) DO UPDATE SET
       last_triggered_at = excluded.last_triggered_at,
       updated_at         = excluded.updated_at
-    WHERE excluded.last_triggered_at > stylebox_price_sync_state.last_triggered_at
+    WHERE stylebox_price_sync_state.last_triggered_at IS NULL
+       OR excluded.last_triggered_at > stylebox_price_sync_state.last_triggered_at
   `).bind(variantId, triggeredAt, now).run();
-  return (res.meta?.changes ?? 0) > 0;
+
+  return {
+    claimed:  (res.meta?.changes ?? 0) > 0,
+    previous: prevRow?.last_triggered_at ?? null,
+  };
+}
+
+// 🔴 الحجز بيترفع لما الشغل يفشل — من غير كده أي إعادة تسليم لنفس الحدث بترجع
+//    stale_event_skipped (المقارنة `>` صارمة)، فإعادة المحاولة على نفس الحدث
+//    **مستحيلة**. بيتنادى في مسارات الفشل الحقيقي بس (فشل الكتابة على
+//    WooCommerce · خطأ غير متوقع) — مش في الرفض ولا في already.
+async function releaseClaim(db, variantId, previous) {
+  const now = new Date().toISOString();
+  if (previous === null) {
+    // مكانش فيه صف قبل الحدث ده — نشيل الطابع بس ونسيب الكاش (لو اتكتب)
+    await db.prepare(
+      'UPDATE stylebox_price_sync_state SET last_triggered_at = NULL, updated_at = ? WHERE variant_id = ?'
+    ).bind(now, variantId).run();
+    return;
+  }
+  await db.prepare(
+    'UPDATE stylebox_price_sync_state SET last_triggered_at = ?, updated_at = ? WHERE variant_id = ?'
+  ).bind(previous, now, variantId).run();
 }
 
 async function getLastSyncedPrice(db, variantId) {
@@ -531,6 +619,76 @@ export default {
       }
       // ──────────────────────────────────────────────────────
 
+      // ─── §DIAG ────────────────────────────────────────────
+      // فحص ذاتي **بدون أي كتابة**. ⚠️ ممنوع يرجّع قيمة أي سر — أسماء وأطوال
+      // بس. (Step 5A ⑨ · الشكل المعتمد: مصفوفة [{ok,label,detail}])
+      if (action === 'diag') {
+        const checks = [];
+        const add = (ok, label, detail) => checks.push({ ok, label, detail });
+
+        // ① المتغيّرات — الطول بيكشف المسافة المخفية في القيمة، والاسم بيكشف
+        //    binding متسمّي غلط (envKeys)
+        const SECRET_KEYS = ['WORKER_SECRET', 'CLIENT_ID', 'CLIENT_SECRET', 'SYNC_SECRET'];
+        for (const k of SECRET_KEYS) {
+          const v = env[k];
+          const ok = typeof v === 'string' && v.trim().length > 0;
+          add(ok, k, ok ? `مضبوط (${v.length} حرف)` : 'ناقص أو فاضي');
+        }
+        add(!!env.DB, 'DB (D1 binding)', env.DB ? 'موجود' : 'ناقص — الكتابة في السجل هتفشل بالكامل');
+        add(!!env.SHOP_DOMAIN, 'SHOP_DOMAIN', env.SHOP_DOMAIN || 'ناقص');
+        add(!!env.WP_BASE_URL, 'WP_BASE_URL', env.WP_BASE_URL || 'ناقص');
+
+        // ② PRICE_DIFFERENCE — **قيمتها بتتعرض عن قصد**: دي var مش سر، وهي
+        //    الفخ الموثّق في CLAUDE.md — لو ضاعت، الأداة بتفضل تكتب synced
+        //    بصمت **بسعر من غير أي فرق**، والفحص ده هو الطريقة الوحيدة تشوفها.
+        const rawDiff = env.PRICE_DIFFERENCE;
+        const diffOk = Number.isFinite(parseFloat(rawDiff));
+        add(diffOk, 'PRICE_DIFFERENCE',
+          diffOk ? `${parseFloat(rawDiff)} (الفرق المضاف على كل سعر)`
+                 : `غايبة أو مش رقم ("${rawDiff}") — الأداة هتزامن بفرق 0 في صمت`);
+
+        add(true, 'envKeys', Object.keys(env).join(', '));
+        add(true, 'Origin', request.headers.get('Origin') || '(بلا)');
+        add(true, 'WORKER_VERSION', WORKER_VERSION);
+
+        // ③ D1 — قراءة فقط: الجدولين اللي الأداة بتعتمد عليهم
+        try {
+          const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM logs WHERE tool = ?').bind(TOOL_NAME).first();
+          add(true, 'D1 logs', `متصل — ${r?.n ?? 0} صف للأداة دي`);
+        } catch (e) { add(false, 'D1 logs', `فشل: ${e.message}`); }
+        try {
+          const r = await env.DB.prepare('SELECT COUNT(*) AS n FROM stylebox_price_sync_state').first();
+          add(true, 'D1 state table', `موجود — ${r?.n ?? 0} variant متتبَّع`);
+        } catch (e) { add(false, 'D1 state table', `فشل: ${e.message} — الـ ordering guard والكاش مش شغالين`); }
+
+        // ④ شوبيفاي — OAuth + الصلاحيات + تكلفة الاستعلام
+        try {
+          const token = await getAccessToken(env);
+          const d = await shopifyGQL(env, token,
+            '{ currentAppInstallation { accessScopes { handle } } }', {}, 'diagScopes');
+          const scopes = (d?.data?.currentAppInstallation?.accessScopes || []).map(x => x.handle);
+          add(true, 'Shopify OAuth', 'التوكن اتجاب بنجاح');
+          add(scopes.includes('read_products'), 'accessScopes',
+            scopes.length ? scopes.join(', ') : '(فاضية — الأداة محتاجة read_products على الأقل)');
+          const t = d?.extensions?.cost?.throttleStatus;
+          if (t) add(true, 'throttleStatus',
+            `متاح ${t.currentlyAvailable} من ${t.maximumAvailable} · استرجاع ${t.restoreRate}/ث`);
+        } catch (e) { add(false, 'Shopify', `فشل: ${e.message}`); }
+
+        // ⑤ WooCommerce — GET على variation مش موجود: **مفيش أي كتابة**.
+        //    404 = الـ endpoint شغّال والسر مقبول · 401/403 = السر غلط
+        try {
+          const probeUrl = `${String(env.WP_BASE_URL || '').replace(/\/$/, '')}/wp-json/ecommoda/v1/variation-price/0`;
+          const res = await fetch(probeUrl, { headers: { 'X-Sync-Header-Secret': env.SYNC_SECRET || '' } });
+          if (res.status === 404) add(true, 'WooCommerce endpoint', '404 على variation وهمي = الـ endpoint شغّال والسر مقبول');
+          else if (res.status === 401 || res.status === 403) add(false, 'WooCommerce endpoint', `${res.status} — SYNC_SECRET مرفوض من WordPress`);
+          else add(true, 'WooCommerce endpoint', `HTTP ${res.status} (المتوقع 404 على variation وهمي)`);
+        } catch (e) { add(false, 'WooCommerce endpoint', `تعذّر الوصول: ${e.message}`); }
+
+        return json({ ok: checks.every(c => c.ok), checks }, 200, request);
+      }
+      // ──────────────────────────────────────────────────────
+
       // ─── §CONFIG-ENDPOINT ─────────────────────────────────
       // الواجهة بتقارن النسخة دي بـ MIN_WORKER_VERSION عندها — بيكشف Promote
       // ناقص أو rollback، اللي بيخلّي الأداة "شغّالة" وهي بترجّع عقد قديم.
@@ -601,6 +759,10 @@ async function handleShopifyWebhook(request, env, ctx) {
   const webhookId = request.headers.get('X-Shopify-Webhook-Id');
   const eventId = request.headers.get('X-Shopify-Event-Id') || webhookId;
   const triggeredAt = request.headers.get('X-Shopify-Triggered-At');
+  // الموضوع والمتجر بيتسجّلوا في كل صف — الأول لتتبع شكل الـ payload، والتاني
+  // حارس متجر: حدث من دومين تاني معناه تسجيل ويبهوك غلط، مش بيانات غلط.
+  const topic = request.headers.get('X-Shopify-Topic') || null;
+  const shopDomain = request.headers.get('X-Shopify-Shop-Domain') || null;
 
   // ── §WEBHOOK::verify ── (CLIENT_SECRET — الويبهوك ده متسجّل عن طريق
   // Webhook Control Center، يعني API-created subscription — راجع §HELPERS
@@ -608,18 +770,19 @@ async function handleShopifyWebhook(request, env, ctx) {
   const secret = env.CLIENT_SECRET;
   const valid = await verifyShopifyHmac(secret, rawBody, hmacHeader);
   if (!valid) {
-    ctx.waitUntil(writeLog(env.DB, {
+    ctx.waitUntil(safeWriteLog(env.DB, {
       tool: TOOL_NAME,
       type: 'hmac_failed',
       notes: 'فشل التحقق من HMAC — سر التوقيع غلط (تأكد إنه CLIENT_SECRET مش SHOPIFY_WEBHOOK_SECRET) أو الـ body اتغيّر',
       extra: {
-        webhookId, eventId, triggeredAt,
+        result: 'error', stage: 'lookup',
+        webhookId, eventId, triggeredAt, topic, shopDomain,
         hmacHeaderPresent: !!hmacHeader,
         bodyBytes: rawBody.length,
         secretPresent: !!env.CLIENT_SECRET,
-        envKeys: Object.keys(env),
+        envKeys: Object.keys(env),   // بيكشف اسم binding متسمّي غلط من أول فشل
       },
-    }).catch(() => {}));
+    }));
     return new Response('Invalid signature', { status: 401 });
   }
 
@@ -632,13 +795,13 @@ async function handleShopifyWebhook(request, env, ctx) {
 
   // ── §WEBHOOK::respondThenProcess ──
   ctx.waitUntil(
-    processProductWebhook(env, payload, { webhookId, eventId, triggeredAt }).catch((e) =>
-      writeLog(env.DB, {
+    processProductWebhook(env, payload, { webhookId, eventId, triggeredAt, topic, shopDomain }).catch((e) =>
+      safeWriteLog(env.DB, {
         tool: TOOL_NAME,
         type: 'unexpected_error',
         notes: e.message || String(e),
-        extra: { webhookId, eventId, triggeredAt },
-      }).catch(() => {})
+        extra: { result: 'error', stage: 'lookup', webhookId, eventId, triggeredAt, topic, shopDomain },
+      })
     )
   );
 
@@ -650,16 +813,16 @@ async function handleShopifyWebhook(request, env, ctx) {
 // custom.wordpress_variation_id metafield. كل نتيجة (نجاح أو تخطي)
 // بتتسجل في D1 لأن ده الطريقة الوحيدة لمراقبة Worker بلا واجهة.
 async function processProductWebhook(env, payload, meta) {
-  const { webhookId, eventId, triggeredAt } = meta;
+  const { webhookId, eventId, triggeredAt, topic, shopDomain } = meta;
   const diff = getPriceDiff(env);
 
   // ── §WEBHOOK::emptyPayloadGuard ──
   if (!payload || !Array.isArray(payload.variants) || payload.variants.length === 0) {
-    await writeLog(env.DB, {
+    await safeWriteLog(env.DB, {
       tool: TOOL_NAME,
       type: 'empty_payload_bug',
       notes: 'Payload وصل من غير variants — تعذّر معرفة أي variant اتغير',
-      extra: { webhookId, eventId, triggeredAt },
+      extra: { result: 'rejected', stage: 'lookup', webhookId, eventId, triggeredAt, topic, shopDomain },
     });
     return;
   }
@@ -673,64 +836,93 @@ async function processProductWebhook(env, payload, meta) {
 // ⚠️ الدالة دي مصدر الحقيقة الوحيد لحساب السعر والـ triple-check — بتُستخدم
 // من الويبهوك (شكل REST payload) ومن bulk_sync_all (شكل GraphQL مُعاد تشكيله
 // لنفس البنية جوه runBulkSyncPage تحت). أي تعديل هنا بينطبق على الاتنين.
+//
+// 🔴 **بترجّع نتيجة العملية** — واحدة من مفردات extra.result المقفولة
+//    (constants §12): success · warning · error · rejected · already.
+//    الرجوع ده هو اللي بيخلّي bulk_sync_all يعرف يقول للواجهة إيه اللي حصل
+//    فعلاً، بدل ما تعرض «✅ خلصت» على صفحة كل صفوفها فشلت. (Step 5A ④)
+//
+// ⚠️ **قاعدة عدم الضياع:** لكل variant صف واحد بالظبط في D1 — مفيش مسار
+//    بيخرج من غير writeLog. (Step 5A ⑭)
 async function processVariant(env, variant, ctx) {
   const { webhookId, eventId, triggeredAt, diff } = ctx;
 
   const variantGid = variant.admin_graphql_api_id || '';
   const variantId = variantGid.split('/').pop();
   const sku = variant.sku || null;
+  let logged = true;
+
+  // كل صف بياخد result (إيه اللي حصل) و stage (اتوقف فين):
+  //   lookup = وقت الاستعلام/الفحص · write = وقت الكتابة على WooCommerce
+  const log = async (entry) => {
+    const ok = await safeWriteLog(env.DB, { tool: TOOL_NAME, sku, ...entry });
+    if (!ok) logged = false;
+    return ok;
+  };
 
   if (!variantId) {
-    await writeLog(env.DB, {
-      tool: TOOL_NAME, type: 'invalid_variant', sku,
+    await log({
+      type: 'invalid_variant',
       notes: 'variant من غير admin_graphql_api_id — تعذّر تحديد الـ variant ID',
-      extra: { webhookId, eventId, variant },
+      extra: { result: 'rejected', stage: 'lookup', webhookId, eventId, variant },
     });
-    return;
+    return 'rejected';
   }
 
   // ── §WEBHOOK::linkGuard ──
   const wordpressVariationId = findMetafield(variant.metafields, 'custom', 'wordpress_variation_id');
   if (!wordpressVariationId) {
-    await writeLog(env.DB, {
-      tool: TOOL_NAME, type: 'not_linked_yet', sku,
+    await log({
+      type: 'not_linked_yet',
       notes: 'الـ variant ده لسه من غير custom.wordpress_variation_id metafield',
-      extra: { variantId, webhookId, eventId },
+      extra: { result: 'rejected', stage: 'lookup', variantId, webhookId, eventId },
     });
-    return;
+    return 'rejected';
   }
 
   // ── §WEBHOOK::orderingGuard ──
-  // نفس الـ triggered_at بينطبق على كل الـ variants جوه نفس الحدث —
-  // ده مقصود: الهدف منع حدث (delivery) قديم يكتب فوق حدث أحدث لنفس الـ
-  // variant، مش تتبع توقيت كل variant لوحده.
+  // نفس الـ triggered_at بينطبق على كل الـ variants جوه نفس الحدث — ده مقصود:
+  // الهدف منع حدث (delivery) قديم يكتب فوق حدث أحدث لنفس الـ variant، مش تتبع
+  // توقيت كل variant لوحده.
+  let claimPrevious = null;
+  let claimTaken = false;
   if (triggeredAt) {
-    const claimed = await claimIfNewer(env.DB, variantId, triggeredAt);
+    const { claimed, previous } = await claimIfNewer(env.DB, variantId, triggeredAt);
     if (!claimed) {
-      await writeLog(env.DB, {
-        tool: TOOL_NAME, type: 'stale_event_skipped', sku,
+      await log({
+        type: 'stale_event_skipped',
         notes: 'الحدث ده أقدم من (أو مساوي لـ) آخر حدث اتعالج لنفس الـ variant — تم التجاهل',
-        extra: { variantId, webhookId, eventId, triggeredAt },
+        extra: { result: 'rejected', stage: 'lookup', variantId, webhookId, eventId, triggeredAt },
       });
-      return;
+      return 'rejected';
     }
+    claimPrevious = previous;
+    claimTaken = true;
   } else {
-    await writeLog(env.DB, {
-      tool: TOOL_NAME, type: 'no_triggered_at_header', sku,
+    // ⚠️ الصف ده **معلوماتي** ومالوش result — العملية بتكمّل بعده وبتكتب صفها
+    //    الخاص. ده الاستثناء الوحيد من «صف واحد لكل variant».
+    await log({
+      type: 'no_triggered_at_header',
       notes: 'X-Shopify-Triggered-At مش موجود — تم التنفيذ من غير ordering guard',
-      extra: { variantId, webhookId, eventId },
+      extra: { stage: 'lookup', variantId, webhookId, eventId },
     });
   }
+
+  // بيرجّع الحجز لو الشغل فشل، عشان إعادة تسليم نفس الحدث تتعالج تاني
+  const release = async () => {
+    if (claimTaken) { try { await releaseClaim(env.DB, variantId, claimPrevious); } catch { /* أسوأ حالة: الحدث يتخطّى */ } }
+  };
 
   // ── §WEBHOOK::computePrices ──
   const shopifyPrice = parseFloat(variant.price);
   if (!Number.isFinite(shopifyPrice)) {
-    await writeLog(env.DB, {
-      tool: TOOL_NAME, type: 'invalid_price', sku,
+    await log({
+      type: 'invalid_price',
       notes: `price غير صالح من Shopify: "${variant.price}"`,
-      extra: { variantId, webhookId, eventId },
+      extra: { result: 'rejected', stage: 'lookup', variantId, webhookId, eventId },
     });
-    return;
+    await release();
+    return 'rejected';
   }
 
   const compareRaw = variant.compare_at_price;
@@ -749,30 +941,37 @@ async function processVariant(env, variant, ctx) {
   }
 
   // ── §WEBHOOK::noChangeGuard ── (تجنّب نداء WordPress من غير داعي)
+  // 🔴 دي result='already' مش رفض ومش فشل: الحالة المستهدفة موجودة أصلاً
+  //    ومفيش حاجة كانت مطلوبة. وهي **أكتر نوع صف في سجل الأداة دي**، فلو
+  //    اتحسبت فشل أو تحذير، أكتر رسالة بتظهر تبقى أقلها إفادة. (constants §12)
   const lastSynced = await getLastSyncedPrice(env.DB, variantId);
   if (
     lastSynced &&
     lastSynced.last_synced_regular_price === regularPrice &&
     (lastSynced.last_synced_sale_price || '') === (salePrice || '')
   ) {
-    await writeLog(env.DB, {
-      tool: TOOL_NAME, type: 'no_price_change_skipped', sku,
+    await log({
+      type: 'no_price_change_skipped',
       notes: 'السعر المحسوب مطابق لآخر قيمة اتزامنت — لا داعي لنداء WordPress',
-      extra: { variantId, webhookId, eventId, regularPrice, salePrice },
+      extra: { result: 'already', stage: 'lookup', variantId, webhookId, eventId, regularPrice, salePrice },
     });
-    return;
+    return 'already';
   }
 
   try {
+    // متغيّر ناقص يوقف العملية باسمه، قبل أي نداء على WordPress (Step 5A ⑧)
+    assertEnv(env, 'woo');
+
     // ── §WEBHOOK::fetchWpVariation ──
     const wp = await wcGetVariationPrice(env, wordpressVariationId);
     if (!wp) {
-      await writeLog(env.DB, {
-        tool: TOOL_NAME, type: 'wp_variation_not_found', sku,
+      await log({
+        type: 'wp_variation_not_found',
         notes: `WordPress Variation Id (${wordpressVariationId}) مش موجود على WordPress`,
-        extra: { variantId, wordpressVariationId, webhookId, eventId },
+        extra: { result: 'rejected', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
       });
-      return;
+      await release();
+      return 'rejected';
     }
 
     // ── §WEBHOOK::tripleCheck ── (SKU + GTIN — نفس منطق stock-sync)
@@ -780,52 +979,62 @@ async function processVariant(env, variant, ctx) {
     const gtinMatch = String(wp.gtin || '').trim() === String(variantId || '').trim();
 
     if (!skuMatch) {
-      await writeLog(env.DB, {
-        tool: TOOL_NAME, type: 'sku_mismatch', sku,
+      await log({
+        type: 'sku_mismatch',
         notes: `SKU مختلف — Shopify: "${sku}" | WordPress: "${wp.sku}"`,
-        extra: { variantId, wordpressVariationId, webhookId, eventId },
+        extra: { result: 'rejected', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
       });
-      return;
+      await release();
+      return 'rejected';
     }
     if (!gtinMatch) {
-      await writeLog(env.DB, {
-        tool: TOOL_NAME, type: 'gtin_mismatch', sku,
+      await log({
+        type: 'gtin_mismatch',
         notes: `GTIN لا يطابق Variant ID — WordPress GTIN: "${wp.gtin}" | متوقع: "${variantId}"`,
-        extra: { variantId, wordpressVariationId, webhookId, eventId },
+        extra: { result: 'rejected', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
       });
-      return;
+      await release();
+      return 'rejected';
     }
 
     // ── §WEBHOOK::syncPrice ──
     try {
       const result = await wcUpdateVariationPrice(env, wordpressVariationId, regularPrice, salePrice);
       await updateLastSyncedPrice(env.DB, variantId, regularPrice, salePrice);
-      await writeLog(env.DB, {
-        tool: TOOL_NAME, type: 'synced', sku,
+      await log({
+        type: 'synced',
         valueBefore: `regular:${wp.regular_price} / sale:${wp.sale_price || '-'}`,
         valueAfter: `regular:${regularPrice} / sale:${salePrice || '-'}`,
         notes: 'تمّت مزامنة السعر بنجاح',
         extra: {
+          result: 'success', stage: 'write',
           variantId, wordpressVariationId, webhookId, eventId,
           shopifyPrice, shopifyCompare, priceDifference: diff, wcResult: result,
         },
       });
+      // الكتابة تمّت بس السجل فشل — الواجهة لازم تعرف الفرق
+      return logged ? 'success' : 'warning';
     } catch (wpErr) {
-      await writeLog(env.DB, {
-        tool: TOOL_NAME, type: 'wp_update_failed', sku,
+      // 🔴 error مش rejected: النداء **وصل** لـ WooCommerce واترفض (constants §12)
+      await log({
+        type: 'wp_update_failed',
         valueBefore: `regular:${wp.regular_price} / sale:${wp.sale_price || '-'}`,
         valueAfter: `regular:${regularPrice} / sale:${salePrice || '-'}`,
         notes: `فشل تحديث WordPress: ${wpErr.message}`,
-        extra: { variantId, wordpressVariationId, webhookId, eventId },
+        extra: { result: 'error', stage: 'write', variantId, wordpressVariationId, webhookId, eventId },
       });
+      await release();
+      return 'error';
     }
 
   } catch (e) {
-    await writeLog(env.DB, {
-      tool: TOOL_NAME, type: 'unexpected_error', sku,
+    await log({
+      type: 'unexpected_error',
       notes: e.message || String(e),
-      extra: { variantId, wordpressVariationId, webhookId, eventId },
+      extra: { result: 'error', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
     });
+    await release();
+    return 'error';
   }
 }
 
@@ -837,6 +1046,7 @@ async function processVariant(env, variant, ctx) {
 // تشتغل من غير أي تكرار في منطق السعر.
 // ══════════════════════════════════════════════════════
 async function runBulkSyncPage(env, cursor) {
+  assertEnv(env, 'shopify');           // متغيّر ناقص يوقف العملية باسمه
   const token = await getAccessToken(env);
 
   const query = `
@@ -857,8 +1067,9 @@ async function runBulkSyncPage(env, cursor) {
   `;
   const data = await shopifyGQL(env, token, query, { cursor }, 'productVariants');
   const conn = data?.data?.productVariants;
+  // الفحص التالت: شوبيفاي ردّت 200 وبـ data، بس بلا الحمولة اللي طلبناها
   if (!conn) {
-    throw new Error('productVariants query failed: ' + JSON.stringify(data?.errors || data));
+    throw new Error('productVariants: شوبيفاي ما رجّعتش productVariants — ' + JSON.stringify(data?.errors || data).slice(0, 200));
   }
 
   const triggeredAt = new Date().toISOString(); // نفس اللحظة لكل الصفحة — كافي لـ ordering guard هنا
@@ -867,6 +1078,9 @@ async function runBulkSyncPage(env, cursor) {
 
   let scanned = 0;
   let linked = 0;
+  // 🔴 عدّادات النتايج — من غيرها الواجهة بتعرض «✅ خلصت» حتى لو كل الصفوف
+  //    فشلت. المفردات مقفولة (constants §12). (Step 5A ④ · html-builder 3C)
+  const results = { success: 0, warning: 0, error: 0, rejected: 0, already: 0 };
 
   for (const edge of conn.edges) {
     scanned++;
@@ -886,17 +1100,22 @@ async function runBulkSyncPage(env, cursor) {
       metafields: [{ namespace: 'custom', key: 'wordpress_variation_id', value: wordpressVariationId }],
     };
 
-    await processVariant(env, shaped, {
+    const r = await processVariant(env, shaped, {
       webhookId: batchTag,
       eventId: batchTag,
       triggeredAt,
       diff,
     });
+    if (r && results[r] !== undefined) results[r]++;
   }
 
   return {
     scanned,
     linked,
+    results,
+    // تكلفة الاستعلام معروضة — الاقتراب من سقف النقط مابيبانش غير بانفجار
+    // دفعة كاملة (Step 5A ⑪ ④)
+    throttleStatus: data?.extensions?.cost?.throttleStatus || null,
     hasMore: conn.pageInfo.hasNextPage,
     nextCursor: conn.pageInfo.endCursor,
   };
