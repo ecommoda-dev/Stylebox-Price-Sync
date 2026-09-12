@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <!-- skills: html-builder v1.0.0 · constants v1.1.0 — 26-08-2026 -->
+  <!-- skills: html-builder v7.0.0 · constants v1.1.0 — 12-09-2026 -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>مزامنة الأسعار — Stylebox — EcomModa</title>
@@ -263,7 +263,14 @@ body {
 @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: none; opacity: 1; } }
 .toast-success { background: var(--green); }
 .toast-error   { background: var(--red); }
+/* 🔴 الأربعة لازم يكونوا معرّفين حتى لو الأداة مش بتستخدمهم كلهم — أول
+   استدعاء بنوع غير معرّف بيدّي **توست بلا خلفية** (نص أبيض على شفاف)،
+   وده فشل صامت الموظف مش هيبلّغ عنه. (Standards #41) */
+.toast-warning { background: var(--amber); }
 .toast-neutral { background: #1a1d27; }
+/* أسماء بديلة للنداءات القديمة */
+.toast-warn    { background: var(--amber); }
+.toast-info    { background: #1a1d27; }
 
 /* ── Login Overlay ─────────────────────────────────────────── */
 .login-overlay {
@@ -298,7 +305,7 @@ body {
   min-height: 38px; padding: 8px 12px;
   border-radius: 9px; border: 1.5px solid;
   background: var(--surface);
-  font-family: var(--font); font-size: 12px; font-weight: 800;
+  font-family: var(--font-body); font-size: 12px; font-weight: 800;
   cursor: pointer; transition: all .15s; white-space: nowrap;
 }
 .login-settings-btn.ready   { border-color: var(--green);  color: var(--green);  background: var(--green-light); }
@@ -332,7 +339,7 @@ body {
   width: 100%; height: 58px;
   border: 1.5px solid var(--border-strong); border-radius: 10px;
   background: var(--surface); color: var(--text-primary);
-  font-family: var(--font); font-size: 14px; font-weight: 600;
+  font-family: var(--font-body); font-size: 14px; font-weight: 600;
   outline: none; padding: 0 14px;
   transition: border-color .15s, box-shadow .15s;
 }
@@ -359,7 +366,7 @@ body {
   border-radius: 10px; border: 1.5px solid var(--border-strong);
   background: var(--surface-2);
   display: grid; place-items: center;
-  font-family: var(--mono); font-size: 22px; font-weight: 800;
+  font-family: var(--font-mono); font-size: 22px; font-weight: 800;
   color: var(--accent); transition: all .15s; user-select: none;
 }
 .pin-slot.empty::before  { content: '_';  transform: translateY(-2px); color: var(--accent); opacity: .75; font-size: 18px; }
@@ -386,7 +393,7 @@ body {
   min-height: 49px; border-radius: 10px;
   border: 1.5px solid var(--border-strong); background: var(--surface);
   color: var(--text-primary);
-  font-family: var(--mono); font-size: 18px; font-weight: 800;
+  font-family: var(--font-mono); font-size: 18px; font-weight: 800;
   cursor: pointer; transition: background .12s, color .12s, border-color .12s, transform .06s;
   display: flex; align-items: center; justify-content: center;
 }
@@ -394,7 +401,7 @@ body {
 .pin-key:active:not(:disabled) { transform: translateY(1px); }
 .pin-key.utility {
   color: var(--red); background: var(--red-light); border-color: var(--red-border);
-  font-family: var(--font); font-size: 13px; font-weight: 900;
+  font-family: var(--font-body); font-size: 13px; font-weight: 900;
 }
 .pin-key.utility:hover:not(:disabled) { background: var(--red); color: #fff; border-color: var(--red); }
 .pin-key:disabled { opacity: .55; cursor: not-allowed; }
@@ -415,7 +422,7 @@ body {
   width: 100%; min-height: 58px; margin-top: 1px;
   border: none; border-radius: 10px;
   background: var(--accent); color: #fff;
-  font-family: var(--font); font-size: 15px; font-weight: 900;
+  font-family: var(--font-body); font-size: 15px; font-weight: 900;
   cursor: pointer; transition: background .15s, opacity .15s, transform .06s;
 }
 .login-primary.visible          { display: inline-flex; }
@@ -429,7 +436,7 @@ body {
   width: 100%; min-height: 42px;
   border-radius: 10px; border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--text-secondary);
-  font-family: var(--font); font-size: 12px; font-weight: 800;
+  font-family: var(--font-body); font-size: 12px; font-weight: 800;
   cursor: pointer; transition: all .15s;
 }
 .login-secondary.visible { display: inline-flex; }
@@ -513,6 +520,20 @@ body {
 .log-meta{font-size:11px;color:var(--text-muted);}
 .log-notes{font-size:11px;color:var(--text-secondary);font-style:italic;margin-top:2px;display:flex;align-items:flex-start;gap:4px;}
 .log-empty{padding:40px;text-align:center;color:var(--text-muted);font-size:13px;}
+
+/* بانر التصدير المقصوص — **ثابت** فوق الجدول، مش توست بيختفي (Standards #30) */
+.export-warn{margin:0;padding:10px 14px;background:var(--amber-light);border-bottom:1px solid var(--amber);
+  color:var(--amber);font-size:13px;font-weight:600;line-height:1.7;}
+
+/* صفحات السجل */
+.pagination-row{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;
+  border-top:1px solid var(--border);flex-wrap:wrap;}
+.page-info{font-size:12px;color:var(--text-secondary);font-family:var(--font-mono);padding:0 8px;}
+.page-btn{padding:6px 14px;border-radius:7px;border:1px solid var(--border);background:var(--surface);
+  font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-body);color:var(--text-primary);
+  transition:background .15s,border-color .15s;}
+.page-btn:hover:not(:disabled){background:var(--accent-light);border-color:var(--accent);color:var(--accent);}
+.page-btn:disabled{opacity:.4;cursor:not-allowed;}
 .loading-spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -617,10 +638,14 @@ body {
   <div class="app-header-btns">
     <!-- Employee badge — shown after login -->
     <button class="hbtn active-user" id="activeUserBtn" onclick="doLogout()">👤 —</button>
+    <!-- Worker stale warning — hidden unless the Worker is older than MIN_WORKER_VERSION -->
+    <button class="hbtn warn" id="verStaleBtn" style="display:none;border-color:var(--amber);
+            color:var(--amber);background:var(--amber-light);"
+            onclick="showWorkerStale()">⚠️ الـ Worker نسخة قديمة</button>
     <!-- About — mandatory -->
     <button class="hbtn" id="aboutBtn" onclick="openAbout()">ℹ️ عن الأداة</button>
-    <!-- Version + Changelog — mandatory -->
-    <button class="hbtn ver-btn" onclick="openChangelog()">v1.0.1 📋</button>
+    <!-- Version + Changelog — mandatory (النص من TOOL_VERSION عن طريق renderVersionUI) -->
+    <button class="hbtn ver-btn" id="verBtn" onclick="openChangelog()">v1.1.0 📋</button>
     <!-- Settings — mandatory, always last -->
     <button class="hbtn" id="settingsBtn" onclick="openSettings()">⚙️ الإعدادات</button>
   </div>
@@ -663,10 +688,23 @@ body {
       <button class="modal-close-x" onclick="closeChangelog()">✕</button>
     </div>
     <div class="eco-modal-body">
-      <!-- Latest version — blue badge -->
+      <!-- Latest version — blue badge (النص من TOOL_VERSION) -->
       <div class="cl-version-block">
         <div class="cl-version-row">
-          <span class="cl-ver-badge">v1.0.1</span><!-- ← MUST match header button -->
+          <span class="cl-ver-badge" id="clLatestBadge">v1.1.0</span>
+          <span class="cl-ver-date">12-09-2026</span>
+        </div>
+        <ul class="cl-items">
+          <li class="cl-item"><span class="cl-tag fix">إصلاح</span><span>تاب السجل كان بيقرا ١٠٠ صف بس من السجل كله وبيعرضهم كإجمالي — كل الفلاتر والتصدير كانوا على الـ ١٠٠ دول. بقى فلترة وعدّ وترتيب من السيرفر مع صفحات (١٠٠ صف/صفحة)</span></li>
+          <li class="cl-item"><span class="cl-tag fix">إصلاح</span><span>زرار «✕ مسح كل الفلاتر» مكنش بيعمل حاجة — كان بيرمي استثناء على عنصر مش موجود قبل ما يمسح أي فلتر</span></li>
+          <li class="cl-item"><span class="cl-tag fix">إصلاح</span><span>التصدير بقى من السجل كله (مش الصفحة المعروضة)، وبانر أحمر بيقول الرقمين لو الملف اتقص عند سقف الـ Worker</span></li>
+          <li class="cl-item"><span class="cl-tag change">تغيير</span><span>توقيت القاهرة بقى يتحسب بـ Intl بدل إضافة ٣ ساعات ثابتة — كان هيغلط بساعة بعد نهاية التوقيت الصيفي (29-10-2026)</span></li>
+          <li class="cl-item"><span class="cl-tag new">جديد</span><span>مهلة ٩٠ ثانية على كل نداء للـ Worker، وتهريب كل النصوص الجاية من الـ API قبل العرض، وحارس بيحذّر لو نسخة الـ Worker أقدم من اللازم</span></li>
+        </ul>
+      </div>
+      <div class="cl-version-block">
+        <div class="cl-version-row">
+          <span class="cl-ver-badge old">v1.0.1</span>
           <span class="cl-ver-date">15-08-2026</span>
         </div>
         <ul class="cl-items">
@@ -723,7 +761,10 @@ body {
           <table>
             <tr><th>action</th><th>الوصف</th></tr>
             <tr><td><code>bulk_sync_all</code></td><td>صفحة واحدة (40 variant) من الكتالوج — بترجع cursor للصفحة الجاية</td></tr>
-            <tr><td><code>get_logs / get_logs_count / get_logs_export</code></td><td>سجل عمليات المزامنة</td></tr>
+            <tr><td><code>get_logs</code></td><td>صفحة واحدة من السجل (100 صف) — فلترة وترتيب وعدّ كلهم server-side</td></tr>
+            <tr><td><code>get_logs_count</code></td><td>العدد الكلي المطابق للفلاتر — للصفحات وللأرقام على الشاشة</td></tr>
+            <tr><td><code>get_logs_export</code></td><td>كل المطابق للفلاتر لحد السقف (2000) — بيرجّع <code>cap</code> و<code>total</code> و<code>truncated</code> عشان التقصّ يبان</td></tr>
+            <tr><td><code>get_config</code></td><td>نسخة الـ Worker — الواجهة بتقارنها بـ <code>MIN_WORKER_VERSION</code></td></tr>
             <tr><td><code>/webhook</code></td><td>مسار الويبهوك (Shopify HMAC — مش Bearer)</td></tr>
           </table>
         </div>
@@ -736,7 +777,11 @@ body {
           <ul>
             <li><code>§AUTH</code> — Universal D1 Auth (check_employee / register_pin / verify_employee / log_logout)</li>
             <li><code>§TOOL-JS::bulkSync</code> — تشغيل مزامنة شاملة صفحة صفحة عن طريق <code>bulk_sync_all</code> + cursor</li>
-            <li><code>§LOG-ENDPOINTS</code> — get_logs / get_logs_count / get_logs_export</li>
+            <li><code>§LOG-ENDPOINTS</code> — get_logs / get_logs_count / get_logs_export (فلترة + عدّ + ترتيب من السيرفر)</li>
+            <li><code>§CONFIG::time</code> — توقيت القاهرة بـ <code>Intl</code> (مفيش إزاحة ثابتة)</li>
+            <li><code>§CONFIG::esc</code> — تهريب أي قيمة جاية من الـ API قبل <code>innerHTML</code></li>
+            <li><code>apiRequest</code> — مهلة 90 ثانية + تفريق أنواع الفشل (Worker / CORS / رد مش JSON)</li>
+            <li><code>checkWorkerVersion</code> — تحذير لو نسخة الـ Worker أقدم من <code>MIN_WORKER_VERSION</code></li>
           </ul>
 
           <h4>KEY VARIABLES</h4>
@@ -745,12 +790,19 @@ body {
             <li><code>LS_URL = 'stylebox_price_sync_worker_url'</code></li>
             <li><code>LS_SECRET = 'stylebox_price_sync_worker_secret'</code></li>
             <li><code>bulkCursor / bulkPages / bulkScanned / bulkLinked</code> — حالة المزامنة الشاملة، في الذاكرة فقط (بترجع للصفر لو الصفحة اتقفلت أو حصل خطأ)</li>
+            <li><code>TOOL_VERSION</code> — نسخة الواجهة، مصدر واحد بيملّي زرار الهيدر وبادج الـ Changelog</li>
+            <li><code>MIN_WORKER_VERSION</code> — أقل نسخة Worker الواجهة دي بتشتغل معاها (مالهاش أي علاقة بـ TOOL_VERSION)</li>
+            <li><code>LOG_PAGE_SIZE = 100</code> · <code>API_TIMEOUT_MS = 90000</code></li>
+            <li><code>logParams()</code> — مصدر واحد لفلاتر السجل، بتستخدمه التلات نداءات</li>
           </ul>
 
           <h4>NOTES</h4>
           <ul>
             <li>المزامنة الشاملة (bulk_sync_all) بتاخد وقت حسب عدد الـ variants — مفيش استئناف تلقائي لو حصل خطأ في نص الطريق، هتبدأ من الأول.</li>
             <li>المنطق الحقيقي لحساب السعر والـ triple-check موجود مرة واحدة بس (processVariant) — الويبهوك والمزامنة الشاملة بيستخدموا نفس الدالة.</li>
+            <li>سجل العمليات كله server-side: الفلاتر والعدّ والصفحات بتتعمل في الـ Worker، والتصدير بيجيب المطابق للفلاتر كله (مش الصفحة المعروضة ولا الاختيار). لو التصدير وصل للسقف، بانر أحمر فوق الجدول بيقول الرقمين.</li>
+            <li>الترتيب (sortBy/sortDir) مدعوم في الـ Worker من v1.1.0 — واجهة الضغط على رأس العمود بتيجي مع تحويل السجل لجدول.</li>
+            <li>فلتر التاريخ بيقارن بـ <code>timestamp</code> المخزّن (UTC) والعرض بتوقيت القاهرة — فرق الساعات ممكن يحط عملية بعد 9 مساءً في يوم UTC اللي بعده. مقبول لفلتر بالأيام.</li>
           </ul>
         </div>
       </details>
@@ -999,13 +1051,16 @@ body {
       </div>
     </div>
 
-    <!-- Stats Bar -->
+    <!-- Stats Bar — الأرقام دي كلها جاية من السيرفر (get_logs_count) -->
     <div class="log-stats-bar">
-      <button class="log-refresh-btn" onclick="loadLog()">↺ تحديث</button>
+      <button class="log-refresh-btn" onclick="reloadLogFromFirstPage()">↺ تحديث</button>
       <div class="log-stat-chip">إجمالي السجل: <strong id="logTotalCount">—</strong></div>
-      <div class="log-stat-chip filtered">نتائج الفلتر: <strong id="logFilteredCount">—</strong></div>
-      <button class="log-export-btn" id="logExportBtn" onclick="exportSelectedLog()">⬇ تصدير المحدد .xlsx</button>
+      <div class="log-stat-chip filtered">النتائج: <strong id="logFilteredCount">—</strong></div>
+      <button class="log-export-btn enabled" id="logExportBtn" onclick="exportLogXLSX()">⬇ تصدير المطابق للفلاتر .xlsx</button>
     </div>
+
+    <!-- بانر التصدير المقصوص — ثابت، بيتمسح مع أي تغيير في الفلاتر -->
+    <div id="logExportWarn" class="export-warn" style="display:none;"></div>
 
     <!-- Select All Header -->
     <div class="log-list-head">
@@ -1016,6 +1071,13 @@ body {
     <!-- Log Body -->
     <div class="log-body" id="logBody">
       <div class="log-empty">اضغط تحديث لتحميل السجل</div>
+    </div>
+
+    <!-- Pagination — 100 صف في الصفحة -->
+    <div class="pagination-row" id="paginationRow" style="display:none;">
+      <button class="page-btn" id="btnPrevPage" onclick="goPage(-1)">→ السابق</button>
+      <span class="page-info" id="pageInfo"></span>
+      <button class="page-btn" id="btnNextPage" onclick="goPage(1)">التالي ←</button>
     </div>
 
   </div>
@@ -1029,6 +1091,17 @@ body {
 // §CONFIG + §SHELL-JS
 // ══════════════════════════════════════════════════════════════
 // ── Config ────────────────────────────────────────────────────
+// نسخة الواجهة — مصدر **واحد** بيملّي زرار الهيدر وبادج الـ Changelog عن طريق
+// renderVersionUI(). (نص النسخة في شاشة الدخول — Standards #24 — لسه مطلوب.)
+const TOOL_VERSION = '1.1.0';
+
+// 🟠 أقل نسخة Worker الواجهة دي بتشتغل معاها. الصفحة بقت بتقرا
+//    cap/total/truncated من get_logs_export و version من get_config — والاتنين
+//    اتضافوا في الـ Worker v1.1.0. Worker أقدم **مش هيرجّع خطأ**، هيرجّع
+//    undefined في صمت → رسالة نجاح على تصدير مقصوص. عشان كده الحارس إلزامي
+//    في نفس التسليم اللي بيضيف القراءة.
+const MIN_WORKER_VERSION = '1.1.0';
+
 const LS_URL       = 'stylebox_price_sync_worker_url';    // ← CHANGE prefix
 const LS_SECRET    = 'stylebox_price_sync_worker_secret'; // ← CHANGE prefix
 const LS_ADMIN_URL = 'admin_worker_url';        // shared across all tools
@@ -1044,6 +1117,17 @@ function getConfig() {
 function isConfigured() {
   const c = getConfig();
   return c.workerUrl.startsWith('http') && c.workerSecret.length > 0;
+}
+
+// ─── §CONFIG::esc — التهريب قبل أي innerHTML ───
+// أي قيمة مصدرها **بره الصفحة** (API · رسالة خطأ · سجل D1) بتعدّي من هنا قبل
+// innerHTML — وده شامل أي attribute. نص خطأ WooCommerce بيوصل حرفيًا في
+// `notes`، و`<` واحدة جواه كانت بتبلع باقي الصف من غير أي إشارة.
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // ── Settings ──────────────────────────────────────────────────
@@ -1080,6 +1164,46 @@ function updateSettingsBtn() {
     .classList.toggle('settings-configured', isConfigured());
 }
 
+// ── Version UI + حارس نسخة الـ Worker ────────────────────────
+let workerVersion = null;
+
+// مقارنة **رقمية** — مش نصية. "10" أصغر من "9" لو اتقارنوا كنص.
+function cmpVersion(a, b) {
+  const pa = String(a).replace(/^v/, '').split('.').map(Number);
+  const pb = String(b).replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
+  return 0;
+}
+
+function renderVersionUI() {
+  const btn = document.getElementById('verBtn');
+  if (btn) btn.textContent = `v${TOOL_VERSION} 📋`;
+  const badge = document.getElementById('clLatestBadge');
+  if (badge) badge.textContent = `v${TOOL_VERSION}`;
+}
+
+async function checkWorkerVersion() {
+  // 🔴 إلزامي — من غير السطر ده مودال الإعدادات بيفتح **لوحده** على أي جهاز
+  //    جديد فوق شاشة الدخول ويغطّي زرار الإعدادات اللي جوّه الكارت.
+  if (!isConfigured()) return;
+  try {
+    const d = await apiGet('get_config');
+    workerVersion = d.version || null;
+    // يولّع **بس** لو الـ Worker أقدم من الحد الأدنى (rollback أو Promote ناقص)
+    const stale = workerVersion && cmpVersion(workerVersion, MIN_WORKER_VERSION) < 0;
+    const btn = document.getElementById('verStaleBtn');
+    if (btn) btn.style.display = stale ? '' : 'none';
+  } catch { /* الإعدادات ممكن تكون لسه مش مضبوطة */ }
+}
+
+function showWorkerStale() {
+  showToast(
+    `الـ Worker نسخته ${workerVersion} والواجهة محتاجة ${MIN_WORKER_VERSION} على الأقل — `
+    + `التحديث على ما يبدو ما نزلش. راجع Deployments و Promote في كلاودفلير.`,
+    'error', 7000
+  );
+}
+
 // ── Changelog ─────────────────────────────────────────────────
 function openChangelog()  { document.getElementById('changelogOverlay').classList.add('open'); }
 function closeChangelog() { document.getElementById('changelogOverlay').classList.remove('open'); }
@@ -1088,32 +1212,15 @@ function closeChangelog() { document.getElementById('changelogOverlay').classLis
 function openAbout()  { document.getElementById('aboutOverlay').classList.add('open'); }
 function closeAbout() { document.getElementById('aboutOverlay').classList.remove('open'); }
 
-// ── Update Badge (optional) ───────────────────────────────────
+// ── Update Badge (optional — مفيش #updBadge في الأداة دي حاليًا) ─────
 function updateBadge(source, isoString) {
-  const el = document.getElementById('updBadge');
+  const el  = document.getElementById('updBadge');
   const txt = document.getElementById('updBadgeText');
-  if (!el) return;
+  if (!el || !txt) return;
   if (!isoString) { el.style.display = 'none'; return; }
   el.style.display = 'flex';
-  const d    = new Date(new Date(isoString).getTime() + 3 * 60 * 60 * 1000);
-  const pad  = n => String(n).padStart(2, '0');
-  let   h    = d.getUTCHours();
-  const ampm = h >= 12 ? 'مساءً' : 'صباحاً';
-  h = h % 12 || 12;
-  txt.textContent = `آخر تحديث: 📅 ${pad(d.getUTCDate())} / ${pad(d.getUTCMonth()+1)} / ${d.getUTCFullYear()} 🕐 ${pad(h)}:${pad(d.getUTCMinutes())} ${ampm}`;
+  txt.textContent = `آخر تحديث: ${formatDateTime(isoString)}`;
   el.className = `upd-badge ${source === 'live' ? 'live' : 'cached'}`;
-}
-
-// ── Refresh (optional) ────────────────────────────────────────
-function setRefreshing(active) {
-  const btn = document.getElementById('refreshBtn');
-  if (!btn) return;
-  btn.disabled = active;
-  btn.classList.toggle('refreshing', active);
-}
-async function doRefresh() {
-  setRefreshing(true);
-  try { await loadData(true); } finally { setRefreshing(false); }
 }
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -1125,51 +1232,104 @@ function showToast(msg, type = 'neutral', duration = 3000) {
   setTimeout(() => t.remove(), duration);
 }
 
-// ── Date/Time Utilities (Cairo UTC+3) ─────────────────────────
-function toCairo(iso) { return new Date(new Date(iso).getTime() + 3 * 60 * 60 * 1000); }
+// ─── §CONFIG::time — توقيت القاهرة **يتحسب، مايتكتبش ثابت** ───
+// 🔴 النسخة القديمة كانت بتضيف 3 ساعات ثابتة. التوقيت الصيفي في مصر بيخلص
+//    29-10-2026، والثابت ده مابيشتكيش لما يبقى غلط: كل وقت معروض بيغلط بساعة،
+//    وكل حد في فلتر التاريخ بيزحف ساعة. الدوال دي مطابقة لـ
+//    ecommoda-constants §13 بالحرف.
+const CAIRO_TZ = 'Africa/Cairo';
+const _cairoFmt = new Intl.DateTimeFormat('en-CA', { timeZone: CAIRO_TZ, hourCycle: 'h23',
+  year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+function cairoParts(d) {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  // ⚠️ formatToParts بترمي RangeError على Invalid Date — وصف واحد بتاريخ باظ
+  //    كان كفاية يوقّع رسم تاب السجل كله.
+  if (isNaN(dt.getTime()))
+    return { year: '----', month: '--', day: '--', hour: '00', minute: '00', second: '00' };
+  const o = {};
+  for (const p of _cairoFmt.formatToParts(dt)) if (p.type !== 'literal') o[p.type] = p.value;
+  if (o.hour === '24') o.hour = '00';        // حارس: بعض المحركات بترجّع 24
+  return o;
+}
+function cairoDateStr(d = new Date()) { const p = cairoParts(d); return `${p.year}-${p.month}-${p.day}`; }
+
+// الصيغة الموحّدة: 📅 DD/MM/YYYY 🕐 HH:MM صباحاً/مساءً
 function formatDateTime(iso) {
-  const d = toCairo(iso), pad = n => String(n).padStart(2, '0');
-  let h = d.getUTCHours();
+  const p = cairoParts(new Date(iso));
+  let h = +p.hour;
   const ampm = h >= 12 ? 'مساءً' : 'صباحاً';
   h = h % 12 || 12;
-  return `${pad(d.getUTCDate())}-${pad(d.getUTCMonth()+1)}-${d.getUTCFullYear()} الساعة ${pad(h)}:${pad(d.getUTCMinutes())} ${ampm}`;
+  return `📅 ${p.day}/${p.month}/${p.year} 🕐 ${String(h).padStart(2,'0')}:${p.minute} ${ampm}`;
 }
 function formatDate(iso) {
-  const d = toCairo(iso), pad = n => String(n).padStart(2, '0');
-  return `${pad(d.getUTCDate())}-${pad(d.getUTCMonth()+1)}-${d.getUTCFullYear()}`;
+  const p = cairoParts(new Date(iso));
+  return `${p.day}/${p.month}/${p.year}`;
 }
+function formatTimeOnly(iso) {
+  const p = cairoParts(new Date(iso));
+  let h = +p.hour;
+  const ampm = h >= 12 ? 'مساءً' : 'صباحاً';
+  h = h % 12 || 12;
+  return `${String(h).padStart(2,'0')}:${p.minute} ${ampm}`;
+}
+// عمود التاريخ في XLSX — بدون إيموجي (الاستثناء الوحيد الموثّق)
+function formatDateForExport(iso) { return formatDate(iso); }
 
 // ── API Helpers ───────────────────────────────────────────────
+// 🟠 apiRequest مش تجميل: `await resp.json()` المباشرة كانت بتخلط تلات حالات
+//    في رسالة واحدة غامضة (الـ Worker رد بخطأ · الـ URL/CORS رافض · الرد مش
+//    JSON). والمهلة إلزامية — من غيرها Worker واقف = spinner بيلف للأبد،
+//    والموظف بيفتكر إن الأداة اتعلّقت فبيعمل refresh وسط عملية كتابة.
+const API_TIMEOUT_MS = 90000;   // طويلة عن قصد: القطع بدري أسوأ من الانتظار
+
+async function apiRequest(url, opts = {}) {
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+  let resp, text;
+  try {
+    resp = await fetch(url, { ...opts, signal: ctrl.signal });
+    text = await resp.text();
+  } catch (e) {
+    if (e.name === 'AbortError')
+      throw new Error(`الـ Worker ما ردّش خلال ${API_TIMEOUT_MS / 1000} ثانية — `
+        + `**راجع تاب السجل قبل ما تعيد المحاولة**: ممكن تكون العملية تمّت`);
+    throw new Error(`تعذّر الوصول للـ Worker (شبكة أو CORS) — ${e.message}`);
+  } finally { clearTimeout(timer); }
+
+  let data;
+  try { data = JSON.parse(text); }
+  catch { throw new Error(`رد الـ Worker مش JSON صالح (HTTP ${resp.status}) — ${text.slice(0, 160)}`); }
+
+  if (!resp.ok) throw new Error(data.error || `الـ Worker ردّ HTTP ${resp.status}`);
+  return data;
+}
+
 async function apiPost(action, body = {}) {
   if (!isConfigured()) { openSettings(); throw new Error('الإعدادات غير مكتملة'); }
   const { workerUrl, workerSecret } = getConfig();
   // ② Strip trailing slash on every fetch — MANDATORY
-  const resp = await fetch(`${workerUrl.replace(/\/$/, '')}?action=${action}`, {
+  return apiRequest(`${workerUrl.replace(/\/$/, '')}?action=${action}`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${workerSecret}` },
     body:    JSON.stringify(body),
   });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-  return data;
 }
 
 async function apiGet(action, params = {}) {
   if (!isConfigured()) { openSettings(); throw new Error('الإعدادات غير مكتملة'); }
   const { workerUrl, workerSecret } = getConfig();
   const qs = new URLSearchParams({ action, ...params });
-  const resp = await fetch(`${workerUrl.replace(/\/$/, '')}?${qs}`, {
+  return apiRequest(`${workerUrl.replace(/\/$/, '')}?${qs}`, {
     headers: { 'Authorization': `Bearer ${workerSecret}` },
   });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-  return data;
 }
 
 // ── Init ──────────────────────────────────────────────────────
+renderVersionUI();
 updateSettingsBtn();
 updateLoginSettingsBtnState(); // defined in 22_login-screen.html block
 loadEmployeesList();       // defined in 22_login-screen.html block
+checkWorkerVersion();      // بيسكت لو الإعدادات لسه مش مضبوطة (بند ٢٩)
 
 
 // ══════════════════════════════════════════════════════════════
@@ -1541,7 +1701,8 @@ async function loadAllEmployees() {
     const sel = document.getElementById('logFilterEmployee');
     if (!sel) return;
     sel.innerHTML = '<option value="">كل الموظفين</option>' +
-      (data.employees || []).map(e => `<option value="${e.username}">${e.display_name}</option>`).join('');
+      (data.employees || [])
+        .map(e => `<option value="${esc(e.username)}">${esc(e.display_name)}</option>`).join('');
   } catch (e) { /* صامت — مش حرج لو فشل، السجل لسه شغال بدون فلتر */ }
 }
 
@@ -1629,13 +1790,24 @@ function resetBulkSync() {
 // §LOG-JS
 // ══════════════════════════════════════════════════════════════
 // ── State ─────────────────────────────────────────────────────
-let logLoaded      = false;
-let logAllData     = [];
-let logTotalAll    = 0;
-let logSelectedIds = new Set();
-let logDebounce    = null;
-let logFiltersOpen = true;
-let activePreset   = '';
+// 🔴 النموذج ده (Log Filter Model v2) بيحل محل الفلترة في المتصفح. النسخة
+//    القديمة كانت بتطلب limit=5000 والـ Worker بيقصّها لـ 100، فالـ ١٠٠ صف
+//    دول كانوا "إجمالي السجل" على الشاشة وكانوا مصدر كل الفلاتر والتصدير —
+//    مع سجل فيه آلاف الصفوف. كل الفلترة والعدّ والترتيب بقوا في السيرفر.
+const LOG_PAGE_SIZE = 100;
+let logLoaded        = false;
+let logRows          = [];    // صفوف **الصفحة الحالية** بس
+let logTotalAll      = 0;     // إجمالي السجل بلا أي فلتر (من السيرفر)
+let logTotalFiltered = 0;     // المطابق للفلاتر الحالية (من السيرفر)
+let logCurrentPage   = 1;
+let logSelectedIds   = new Set();
+let logDebounce      = null;
+let logFiltersOpen   = true;
+let activePreset     = '';
+// الترتيب بيتبعت للسيرفر (sortBy/sortDir). واجهة الضغط على رأس العمود بتيجي
+// مع تحويل السجل لجدول — دفعة ٤. الـ Worker جاهز ليها من دلوقتي.
+let logSortBy        = '';
+let logSortDir       = '';
 
 // ── Tab Switching ─────────────────────────────────────────────
 function switchMainTab(tab) {
@@ -1674,15 +1846,22 @@ document.addEventListener('click', () => {
   document.getElementById('logPresetMenu')?.classList.remove('open');
   document.getElementById('logPresetBtn')?.classList.remove('open');
 });
+// الـ presets كلها بتتبنى على Date في منتصف ليل UTC بيمثّل **يوم القاهرة**
+// التقويمي، فالقراءة لازم تبقى getUTC* — الـ local getters بتزحف اليوم على أي
+// جهاز بإزاحة سالبة.
 function toLocalISO(d) {
   const pad = n => String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`;
+}
+// «اليوم» بتوقيت القاهرة — من cairoDateStr مش من إزاحة ثابتة
+function cairoToday() {
+  const [y, m, d] = cairoDateStr().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
 }
 function applyPreset(preset) {
   document.getElementById('logPresetMenu').classList.remove('open');
   document.getElementById('logPresetBtn').classList.remove('open');
-  const now   = new Date(new Date().getTime() + 3*60*60*1000);
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const today = cairoToday();
   let from, to;
   switch (preset) {
     case 'today':       from=to=today; break;
@@ -1705,80 +1884,124 @@ function applyPreset(preset) {
   document.querySelectorAll('.log-preset-item').forEach(el=>el.classList.toggle('active',el.dataset.preset===preset));
   document.getElementById('logPresetLabel').textContent=`⚡ ${PRESET_LABELS[preset]}`;
   document.getElementById('logPresetBtn').classList.add('has-preset');
-  if (!logLoaded) { loadLog(); } else { applyLogFilters(); }
+  reloadLogFromFirstPage();
 }
 
 // ── Filter Handlers ───────────────────────────────────────────
-function onLogEmpFilterChange() { loadLog(); } // server-side only
-function onLogFilterChange() {
-  activePreset='';
-  document.querySelectorAll('.log-preset-item').forEach(el=>el.classList.remove('active'));
-  document.getElementById('logPresetLabel').textContent='⚡ اختار فترة';
+// أي تغيير في أي فلتر → رجّع لصفحة ١، امسح بانر التصدير، وحمّل من السيرفر.
+function resetPresetLabel() {
+  activePreset = '';
+  document.querySelectorAll('.log-preset-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('logPresetLabel').textContent = '⚡ اختار فترة';
   document.getElementById('logPresetBtn').classList.remove('has-preset');
-  if (!logLoaded) { loadLog(); return; }
-  applyLogFilters();
 }
-function onLogSearchInput() { clearTimeout(logDebounce); logDebounce=setTimeout(applyLogFilters,300); }
+function reloadLogFromFirstPage() { logCurrentPage = 1; clearExportWarn(); loadLog(); }
+function onLogEmpFilterChange()   { reloadLogFromFirstPage(); }
+function onLogFilterChange()      { resetPresetLabel(); reloadLogFromFirstPage(); }
+function onLogSearchInput() {
+  clearTimeout(logDebounce);
+  logDebounce = setTimeout(reloadLogFromFirstPage, 400);
+}
 function clearLogFilters() {
-  document.getElementById('logFilterEmployee').value='';
-  document.getElementById('logFilterType').value='';
-  document.getElementById('logFilterCount').value='';
-  const fi=document.getElementById('logFilterDateFrom'), ti=document.getElementById('logFilterDateTo');
-  fi.value=''; ti.value=''; updateDateEmptyClass(fi); updateDateEmptyClass(ti);
-  document.getElementById('logSearch').value='';
-  document.getElementById('logSearchNotes').value='';
-  activePreset='';
-  document.querySelectorAll('.log-preset-item').forEach(el=>el.classList.remove('active'));
-  document.getElementById('logPresetLabel').textContent='⚡ اختار فترة';
-  document.getElementById('logPresetBtn').classList.remove('has-preset');
-  loadLog();
+  document.getElementById('logFilterEmployee').value = '';
+  document.getElementById('logFilterType').value = '';
+  const fi = document.getElementById('logFilterDateFrom'), ti = document.getElementById('logFilterDateTo');
+  fi.value = ''; ti.value = ''; updateDateEmptyClass(fi); updateDateEmptyClass(ti);
+  document.getElementById('logSearch').value = '';
+  document.getElementById('logSearchNotes').value = '';
+  resetPresetLabel();
+  reloadLogFromFirstPage();
 }
 
-// ── Data Fetching ─────────────────────────────────────────────
+// ── Filter Params — مصدر واحد للتلات نداءات ───────────────────
+// القوايم بتتبعت CSV. الفلتر الفاضي = مش مبعوت أصلاً (يعني "الكل").
+// ⚠️ التعريف المكرر هو اللي بيخلي التصدير ينزّل حاجة غير المعروضة — عشان كده
+//    مصدر واحد بالظبط: get_logs · get_logs_count · get_logs_export.
+function logParams() {
+  const p = {};
+  const emp  = document.getElementById('logFilterEmployee').value;
+  const type = document.getElementById('logFilterType').value;
+  const from = document.getElementById('logFilterDateFrom').value;
+  const to   = document.getElementById('logFilterDateTo').value;
+  const s    = document.getElementById('logSearch').value.trim();
+  const sn   = document.getElementById('logSearchNotes').value.trim();
+  // employees/types قوايم CSV — قيمة واحدة دلوقتي، والـ multi-select جاي في
+  // دفعة ٤؛ العقد من ناحية الـ Worker جاهز للاتنين.
+  if (emp)  p.employees   = emp;
+  if (type) p.types       = type;
+  if (from) p.dateFrom    = from;
+  if (to)   p.dateTo      = to;
+  if (s)    p.search      = s;
+  if (sn)   p.searchNotes = sn;
+  return p;
+}
+
+// ── Data Fetching — server-side بالكامل ───────────────────────
 async function loadLog() {
-  const body=document.getElementById('logBody');
-  body.innerHTML='<div class="log-empty"><div class="loading-spinner"></div><p style="margin-top:8px;font-size:12px;">جاري التحميل...</p></div>';
-  document.getElementById('logFilteredCount').textContent='—';
+  const body = document.getElementById('logBody');
+  body.innerHTML = '<div class="log-empty"><div class="loading-spinner"></div><p style="margin-top:8px;font-size:12px;">جاري التحميل...</p></div>';
+  document.getElementById('logFilteredCount').textContent = '—';
+
+  const base   = logParams();
+  const offset = (logCurrentPage - 1) * LOG_PAGE_SIZE;
+
   try {
-    const cfg=getConfig(), emp=document.getElementById('logFilterEmployee').value;
-    if (logTotalAll===0||!emp) {
-      const pTotal=new URLSearchParams({action:'get_logs',limit:'5000'});
-      const rTotal=await fetch(`${cfg.workerUrl.replace(/\/$/,'')}?${pTotal}`,{headers:{'Authorization':`Bearer ${cfg.workerSecret}`}});
-      const dTotal=await rTotal.json();
-      if(dTotal.ok) logTotalAll=(dTotal.entries||[]).filter(e=>e.type!=='login'&&e.type!=='logout').length;
-    }
-    document.getElementById('logTotalCount').textContent=logTotalAll.toLocaleString('en-US');
-    const params=new URLSearchParams({action:'get_logs',limit:'5000'});
-    if(emp) params.set('employee',emp);
-    const res=await fetch(`${cfg.workerUrl.replace(/\/$/,'')}?${params}`,{headers:{'Authorization':`Bearer ${cfg.workerSecret}`}});
-    const data=await res.json();
-    if(!data.ok) throw new Error(data.error||'خطأ في جلب السجل');
-    logAllData=(data.entries||[]).filter(e=>e.type!=='login'&&e.type!=='logout');
-    logLoaded=true;
-    applyLogFilters();
-  } catch(e) {
-    body.innerHTML=`<div class="log-empty">⚠️ ${e.message}</div>`;
-    document.getElementById('logTotalCount').textContent='—';
+    // صفحة البيانات + العدّ المطابق للفلتر + الإجمالي بلا فلاتر — بالتوازي،
+    // وبنفس الفلاتر بالظبط في الاتنين الأولانيين.
+    // ⚠️ الإجمالي بلا فلاتر **مايتكاشش**: الأداة بتكتب صفوف جديدة كل ويبهوك،
+    //    فكاش الرقم ده معناه إن زرار «تحديث» بيعرض عدد قديم. ولو مفيش فلاتر
+    //    أصلاً فالعدّين نفس الاستعلام — فبنوفّر النداء التالت بدل ما نكاشه.
+    const hasFilters = Object.keys(base).length > 0;
+
+    const [pageData, countData, allData] = await Promise.all([
+      apiGet('get_logs', {
+        ...base,
+        limit:  String(LOG_PAGE_SIZE),
+        offset: String(offset),
+        ...(logSortBy ? { sortBy: logSortBy, sortDir: logSortDir } : {}),
+      }),
+      apiGet('get_logs_count', base),
+      hasFilters ? apiGet('get_logs_count', {}) : Promise.resolve(null),
+    ]);
+
+    logTotalFiltered = countData.total || 0;
+    logTotalAll      = hasFilters ? (allData?.total || 0) : logTotalFiltered;
+    logRows          = pageData.entries || [];
+    logLoaded        = true;
+
+    document.getElementById('logTotalCount').textContent    = logTotalAll.toLocaleString('en-US');
+    document.getElementById('logFilteredCount').textContent = logTotalFiltered.toLocaleString('en-US');
+    renderLog(logRows);
+    renderPagination();
+  } catch (e) {
+    body.innerHTML = `<div class="log-empty">⚠️ ${esc(e.message)}</div>`;
+    document.getElementById('logTotalCount').textContent = '—';
+    document.getElementById('paginationRow').style.display = 'none';
   }
 }
 
-// ── Client-side Filtering ─────────────────────────────────────
-function applyLogFilters() {
-  const type=document.getElementById('logFilterType').value;
-  const dateFrom=document.getElementById('logFilterDateFrom').value;
-  const dateTo=document.getElementById('logFilterDateTo').value;
-  const search=document.getElementById('logSearch').value.trim().toLowerCase();
-  const searchN=document.getElementById('logSearchNotes').value.trim().toLowerCase();
-  const filtered=logAllData.filter(e=>{
-    const etype=e.type||'';
-    if(type&&etype!==type) return false;
-    if(dateFrom||dateTo){const ts=e.timestamp?e.timestamp.substring(0,10):'';if(dateFrom&&ts<dateFrom)return false;if(dateTo&&ts>dateTo)return false;}
-    if(search&&!(e.sku||'').toLowerCase().includes(search)) return false;
-    if(searchN&&!(e.notes||'').toLowerCase().includes(searchN)) return false;
-    return true;
-  });
-  document.getElementById('logFilteredCount').textContent=filtered.length.toLocaleString('en-US');
-  renderLog(filtered);
+// ── Pagination ────────────────────────────────────────────────
+function renderPagination() {
+  const row = document.getElementById('paginationRow');
+  const totalPages = Math.max(1, Math.ceil(logTotalFiltered / LOG_PAGE_SIZE));
+  if (logCurrentPage > totalPages) logCurrentPage = totalPages;
+  row.style.display = logTotalFiltered > LOG_PAGE_SIZE ? 'flex' : 'none';
+  const from = logTotalFiltered ? (logCurrentPage - 1) * LOG_PAGE_SIZE + 1 : 0;
+  const to   = Math.min(logCurrentPage * LOG_PAGE_SIZE, logTotalFiltered);
+  document.getElementById('pageInfo').textContent =
+    `${from.toLocaleString('en-US')}–${to.toLocaleString('en-US')} من ${logTotalFiltered.toLocaleString('en-US')}`
+    + ` · صفحة ${logCurrentPage} من ${totalPages}`;
+  document.getElementById('btnPrevPage').disabled = logCurrentPage <= 1;
+  document.getElementById('btnNextPage').disabled = logCurrentPage >= totalPages;
+}
+
+function goPage(dir) {
+  const totalPages = Math.max(1, Math.ceil(logTotalFiltered / LOG_PAGE_SIZE));
+  const next = logCurrentPage + dir;
+  if (next < 1 || next > totalPages) return;
+  logCurrentPage = next;
+  clearExportWarn();
+  loadLog();
 }
 
 // ── Render ────────────────────────────────────────────────────
@@ -1809,14 +2032,16 @@ function renderLog(entries) {
     const notes=e.notes||null, timestamp=e.timestamp||null, entryId=e.id||idx;
     const meta=PRICE_SYNC_TYPE_META[type]||{dot:'',cls:'',label:type};
     const dotClass=meta.dot;
-    const typeHtml=`<span class="log-type-badge ${meta.cls}">${meta.label}</span>`;
-    const skuHtml=sku?`<span class="log-sku-badge">${sku}</span>`:'';
-    const empHtml=employee?`<span class="log-emp-badge">👤 ${employee.replace(/_/g,' ')}</span>`:'';
-    const notesHtml=notes?`<div class="log-notes">📝 ${notes}</div>`:'';
+    // 🔴 كل قيمة جاية من الـ API بتعدّي على esc() — حقل notes جواه نص خطأ
+    //    WooCommerce حرفيًا، وأي علامة أصغر-من جواه كانت بتبلع باقي الصف في صمت.
+    const typeHtml=`<span class="log-type-badge ${esc(meta.cls)}">${esc(meta.label)}</span>`;
+    const skuHtml=sku?`<span class="log-sku-badge">${esc(sku)}</span>`:'';
+    const empHtml=employee?`<span class="log-emp-badge">👤 ${esc(employee.replace(/_/g,' '))}</span>`:'';
+    const notesHtml=notes?`<div class="log-notes">📝 ${esc(notes)}</div>`:'';
     const dateStr=timestamp?formatDateTime(timestamp):'—';
-    const qtyHtml=(valBefore||valAfter)?`<div class="log-qty-change">قبل: ${valBefore||'—'} ← بعد: ${valAfter||'—'}</div>`:'';
-    return `<div class="log-entry" id="log-entry-${entryId}">
-      <div class="log-cb"><input type="checkbox" class="log-entry-cb" data-id="${entryId}" data-idx="${idx}" onchange="onLogCbChange(this)"/></div>
+    const qtyHtml=(valBefore||valAfter)?`<div class="log-qty-change">قبل: ${esc(valBefore||'—')} ← بعد: ${esc(valAfter||'—')}</div>`:'';
+    return `<div class="log-entry" id="log-entry-${esc(entryId)}">
+      <div class="log-cb"><input type="checkbox" class="log-entry-cb" data-id="${esc(entryId)}" data-idx="${idx}" /></div>
       <div class="log-dot ${dotClass}"></div>
       <div class="log-entry-content">
         <div class="log-entry-top">${skuHtml}${typeHtml}${empHtml}</div>
@@ -1828,6 +2053,13 @@ function renderLog(entries) {
 }
 
 // ── Checkbox ──────────────────────────────────────────────────
+// الوصل بالتفويض بدل onchange مكتوب جوّه سلسلة الرسم — مستمع واحد على الحاوية
+// بيخدم كل الصفوف، ومنطق الاختيار نفسه ما اتغيّرش.
+document.getElementById('logBody').addEventListener('change', (e) => {
+  const cb = e.target.closest && e.target.closest('.log-entry-cb');
+  if (cb) onLogCbChange(cb);
+});
+
 function onLogCbChange(cb) {
   const id=cb.dataset.id;
   if(cb.checked) logSelectedIds.add(id); else logSelectedIds.delete(id);
@@ -1845,32 +2077,49 @@ function toggleLogSelectAll(master) {
   });
   updateLogExportBtn();
 }
+// ⚠️ التصدير **مش** بيتبع الاختيار ولا الصفحة المعروضة — بيصدّر كل المطابق
+//    للفلاتر من السيرفر (Log Filter Model v2). عشان كده الزرار بيقول العدد
+//    المطابق، مش عدد المحدد.
 function updateLogExportBtn() {
   const btn=document.getElementById('logExportBtn');
   if(!btn)return;
-  const has=logSelectedIds.size>0;
-  btn.classList.toggle('enabled',has);
-  btn.textContent=has?`⬇ تصدير المحدد (${logSelectedIds.size}) .xlsx`:'⬇ تصدير المحدد .xlsx';
+  btn.classList.add('enabled');
+  btn.textContent = logTotalFiltered
+    ? `⬇ تصدير المطابق للفلاتر (${logTotalFiltered.toLocaleString('en-US')}) .xlsx`
+    : '⬇ تصدير المطابق للفلاتر .xlsx';
 }
 
 // ── XLSX Export ───────────────────────────────────────────────
-async function exportSelectedLog() {
-  const selected=[...logSelectedIds];
-  const rows=logAllData.filter((_,idx)=>selected.includes(String(logAllData[idx]?.id??idx))||selected.includes(String(idx))).map(e=>{
-    const meta=PRICE_SYNC_TYPE_META[e.type]||{label:e.type};
-    return {
-      'التاريخ':      e.timestamp?formatDate(e.timestamp):null,
-      'الوقت':        e.timestamp?formatDateTime(e.timestamp).split(' الساعة ')[1]:null,
-      'الموظف':       e.employee?e.employee.replace(/_/g,' '):null,
-      'SKU':          e.sku||null,
-      'نوع العملية':  meta.label||e.type,
-      'قبل':          e.value_before||null,
-      'بعد':          e.value_after||null,
-      'الملاحظات':    e.notes||null,
-    };
-  }).filter(Boolean);
-  if(!rows.length)return;
+function clearExportWarn() {
+  const w=document.getElementById('logExportWarn');
+  if(w){ w.style.display='none'; w.innerHTML=''; }
+}
+
+// 🔴 التصدير بينده get_logs_export بنفس فلاتر الشاشة — مش الصفحة المعروضة
+//    ومش الاختيار. والـ Worker بيرجّع معاه cap/total/truncated، فالتقصّ بيبان
+//    في **بانر ثابت** فوق الجدول بالرقمين، ورسالة النجاح في فرع else بس.
+//    (html-builder Standards #30)
+async function exportLogXLSX() {
+  clearExportWarn();
+  const btn=document.getElementById('logExportBtn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ جاري التصدير...'; }
   try{
+    const data=await apiGet('get_logs_export', logParams());
+    const entries=data.entries||[];
+    if(!entries.length){ showToast('مفيش صفوف مطابقة للفلاتر الحالية','warning',4000); return; }
+    const rows=entries.map(e=>{
+      const meta=PRICE_SYNC_TYPE_META[e.type]||{label:e.type};
+      return {
+        'التاريخ':      e.timestamp?formatDateForExport(e.timestamp):null,
+        'الوقت':        e.timestamp?formatTimeOnly(e.timestamp):null,
+        'الموظف':       e.employee?e.employee.replace(/_/g,' '):null,
+        'SKU':          e.sku||null,
+        'نوع العملية':  meta.label||e.type,
+        'قبل':          e.value_before||null,
+        'بعد':          e.value_after||null,
+        'الملاحظات':    e.notes||null,
+      };
+    });
     const wb=new ExcelJS.Workbook();
     wb.views=[{rightToLeft:true}];
     const ws=wb.addWorksheet('سجل العمليات');
@@ -1888,10 +2137,36 @@ async function exportSelectedLog() {
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob), a=document.createElement('a');
-    a.href=url; a.download=`price-sync-export-${new Date().toISOString().substring(0,10)}.xlsx`;
+    // ⚠️ cairoDateStr مش toISOString — التصدير الساعة ١ صباحًا بالقاهرة كان
+    //    بياخد **تاريخ إمبارح** في اسم الملف.
+    a.href=url; a.download=`price-sync-export-${cairoDateStr()}.xlsx`;
     a.click(); URL.revokeObjectURL(url);
-    showToast(`تم تصدير ${rows.length} عملية ✓`,'success');
-  }catch(err){showToast('خطأ في التصدير: '+err.message,'error');}
+
+    // ⬇️ الحقيقة بتيجي من الـ Worker — ممنوع الواجهة تكتب السقف عندها
+    const warn=document.getElementById('logExportWarn');
+    const capKnown=(data.cap!=null&&data.total!=null);
+    const truncated=data.truncated===true||(data.cap&&entries.length>=data.cap);
+    if(truncated){
+      warn.innerHTML=`⚠️ <b>التصدير اتقص</b> — الملف فيه ${esc(entries.length.toLocaleString('en-US'))} صف`
+        +(data.total!=null?` من أصل <b>${esc(data.total.toLocaleString('en-US'))}</b> مطابقين للفلاتر`:'')
+        +`. ضيّق الفترة أو الفلاتر وصدّر على دفعات.`;
+      warn.style.display='';
+      showToast(`⚠️ التصدير اتقص عند ${entries.length.toLocaleString('en-US')} صف — الملف مش كامل`,'error',7000);
+    } else if(!capKnown){
+      // Worker أقدم من v1.1.0 مابيرجّعش cap/total — يبقى إحنا **مش عارفين** إن
+      // الملف كامل، والمفروض نقول كده بدل علامة صح خضرا.
+      warn.innerHTML=`⚠️ <b>مش قادرين نتأكد إن الملف كامل</b> — الـ Worker مابيرجّعش عدّاد التصدير `
+        +`(محتاج نسخة ${esc(MIN_WORKER_VERSION)} على الأقل). الملف فيه ${esc(entries.length.toLocaleString('en-US'))} صف.`;
+      warn.style.display='';
+      showToast(`تم تنزيل ${entries.length.toLocaleString('en-US')} صف — راجع البانر فوق الجدول`,'warning',6000);
+    } else {
+      showToast(`تم تصدير ${entries.length.toLocaleString('en-US')} عملية ✓`,'success');
+    }
+  }catch(err){
+    showToast('خطأ في التصدير: '+err.message,'error',6000);
+  }finally{
+    if(btn){ btn.disabled=false; updateLogExportBtn(); }
+  }
 }
 
 </script>

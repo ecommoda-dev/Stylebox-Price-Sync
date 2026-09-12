@@ -5,7 +5,9 @@ variant مربوط بـ `custom.wordpress_variation_id` مع WooCommerce (styleb
 تلقائيًا، مع هامش سعر ثابت (`PRICE_DIFFERENCE`) وTriple-check (SKU + GTIN).
 فيها كمان مزامنة شاملة يدوية (`bulk_sync_all`) لكل الكتالوج صفحة صفحة.
 **مين بيستخدمها:** حسابات / إدارة المخزون — تشغيل تلقائي بالكامل، الواجهة للمراقبة والمزامنة الشاملة اليدوية بس.
-**الإصدار:** Worker `v1.0.0` · الواجهة `v1.0.0`   ← خط الأساس وقت النقل لـ git (26-08-2026)، الاتنين مستقلين
+**الإصدار:** Worker `v1.1.0` · الواجهة `v1.1.0`   ← الاتنين مستقلين. خط الأساس
+وقت النقل لـ git كان `v1.0.0`/`v1.0.0` (26-08-2026)؛ الرفع الحالي من جردة
+12-09-2026 (دفعات ١+٢+٣).
 
 ## الروابط
 
@@ -22,7 +24,8 @@ variant مربوط بـ `custom.wordpress_variation_id` مع WooCommerce (styleb
 | `POST /webhook` | مستقبِل ويبهوك Shopify `PRODUCTS_UPDATE` — HMAC بـ `CLIENT_SECRET` (مش `SHOPIFY_WEBHOOK_SECRET` — مسجّل عن طريق Webhook Control Center) |
 | `check_employee` / `register_pin` / `verify_employee` / `log_logout` / `get_employees` | Universal D1 Auth القياسي |
 | `bulk_sync_all` | صفحة واحدة (40 variant) من كل الكتالوج — بترجع `cursor` للصفحة الجاية |
-| `get_logs` / `get_logs_count` / `get_logs_export` | سجل العمليات |
+| `get_config` | نسخة الـ Worker (`WORKER_VERSION`) — الواجهة بتقارنها بـ `MIN_WORKER_VERSION` عندها وبتحذّر لو الـ Worker أقدم (Promote ناقص / rollback) |
+| `get_logs` / `get_logs_count` / `get_logs_export` | سجل العمليات — فلترة وعدّ وترتيب **كلهم server-side**. الفلاتر المقبولة على التلاتة بنفس المجموعة: `employees` · `types` (CSV) · `search` (بيدوّر في **`sku`**) · `searchNotes` · `dateFrom` · `dateTo` · `sortBy`/`sortDir` (على `get_logs` بس). و`get_logs_export` بيرجّع `cap` و`total` و`truncated` جنب الصفوف |
 
 ## D1
 
@@ -70,6 +73,10 @@ Build watch paths : * الافتراضي (مش مضيّقة — راجع §13-ب
 > قبل النقل مباشرة (26-08-2026)، بدل زرار "تحديث" (راجع §0-ب):
 
 ```
+> ⚠️ **الاستعلامات دي بتعدّ `type` لوحده — يعني بتقيس المحاولات مش الكتابة
+> المؤكَّدة** (`worker-builder` Step 5A ⑭). التصحيح مستحيل قبل ما `extra.result`
+> يتكتب (بند مؤجّل لدفعة ٥ — راجع سطر 🔴 معلّقة).
+
 إجمالي logs لـ tool='stylebox_price_sync':
   no_price_change_skipped : 3750
   synced                  : 812
@@ -86,6 +93,14 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 - **الهيدر `X-Sync-Header-Secret` مختلف عن الاسم القياسي `X-EcomModa-Secret`**
   المستخدم في باقي أدوات WooCommerce (`woocommerce-sync-helper` §3). ده موجود
   في الكود المنشور فعليًا — سلوك قائم، مش غلطة نقل، ومتغيّرش من غير طلب صريح.
+- **حارس `WORKER_SECRET` الغايب اتضاف في v1.1.0** — قبل كده لو السر ضاع أو
+  اتضاف من غير Promote، القالب كان بينتج السلسلة الحرفية `"Bearer undefined"`
+  فأي طلب بالهيدر ده بيعدّي. لو شوفت `WORKER_SECRET غير مضبوط` في رد الـ
+  Worker، ده الحارس شغّال — ضيف السر واعمل Promote.
+- **`updateLastSyncedPrice` كانت `UPDATE` على صف ممكن ميكونش موجود** (اتصلّحت
+  في v1.1.0 كـ upsert). الصف بيتعمله INSERT جوّه `claimIfNewer` بس، واللي
+  بتتخطّى في مسار `no_triggered_at_header` — فالكاش كان مابيتكتبش في صمت
+  و`no_price_change_skipped` عمرها ما كانت تتحقق للحالة دي.
 - **التعليق فوق `wcGetVariationPrice`/`wcUpdateVariationPrice` بيقول endpoint
   `variation-price` "لسه مش موجود على WordPress"** — ده تعليق قديم فات
   أوانه. صفوف D1 حية (`type='synced'`, `wcResult.success:true`) بتأكد إن
@@ -109,12 +124,29 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 | المهارة | الإصدار وقت آخر تعديل |
 |---|---|
-| ecommoda-worker-builder | v1.0.0 |
-| ecommoda-html-builder | v1.0.0 |
+| ecommoda-worker-builder | v3.0.0 |
+| ecommoda-html-builder | v7.0.0 |
 | ecommoda-constants | v1.1.0 |
 
-آخر مطابقة: 26-08-2026 · `index.js` v1.0.0 · `index.html` v1.0.0
-🔴 معلّقة: — لا شيء
+آخر مطابقة: 12-09-2026 · `index.js` v1.1.0 · `index.html` v1.1.0
+🔴 معلّقة (بنود كاسرة/إلزامية معروفة ومتقرر تأجيلها لدفعات ٤ و٥ — جردة 12-09-2026):
+- **دفعة ٤ (الطبقة البصرية):** `<div class="container">` مش موجود خالص والكلاس
+  معرّف ومش مستخدم (Standards #18 — البند ده اتوثّق **من الأداة دي** بتاريخ
+  20-08-2026) · `--container-max: 960px` قيمة حرة والمطلوب 1200px لأداة فيها
+  Log Tab (#17 + #26) · السجل بطاقات مش جدول ومفيش `unified-section` (#19 ·
+  #26) · الفلاتر `<select>` قيمة واحدة مش multi-select (#21) · واجهة الترتيب
+  على رأس الأعمدة (الـ Worker جاهز ليها من v1.1.0) · `IBM Plex Mono` لسه
+  متحمّل في `<head>` (#16) · ٢٤ قيمة hex حرفية + ١١ توكن ناقص (#35 · #36).
+- **دفعة ٥ (الحُرّاس والتوثيق):** `?action=diag` + `assertEnv` في الـ Worker
+  وزرار 🩺 في الإعدادات (Step 5A ⑨) · `bulk_sync_all` مابيرجّعش عدّادات نتايج
+  فالشاشة بتقول «✅ خلصت» حتى لو كل الصفوف فشلت (Step 5A ④) · `extra.result`
+  مش مكتوب في أي صف، وعشان كده **استعلامات خط الأساس تحت لسه بتعدّ المحاولات
+  مش الكتابة المؤكَّدة** (Step 5A ⑭) · `.catch(() => {})` على `writeLog` في
+  موضعين ومفيش `logged:false` (⑦) · الـ claim مش بيترفع عند فشل WooCommerce ·
+  سلسلة السقوف التلاتة مش مكتوبة (⑪) · `WORKER URL`/`ADMIN WORKER URL` لسه
+  حقول إعدادات في localStorage (#28) · نص النسخة في شاشة الدخول (#24) ·
+  إرشاد اختيار الموظف مكرر ٣ مرات (#34) · `CLAUDE.md` و`README.md` بلا غلاف
+  RTL وبادج نسخة وفوتر (§MD).
 
 > سطر **🔴 معلّقة** = أي بند كاسر **معروف ومتقرر تأجيله**، بسببه.
 > `— لا شيء` معناها مفيش. **بند 🔴 متأجل من غير ما يتكتب هنا = بند ضايع** —
