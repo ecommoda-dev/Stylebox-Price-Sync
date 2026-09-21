@@ -1,0 +1,31 @@
+{
+  "tool": "stylebox_price_sync",
+  "since": null,
+  "types": {
+    "login": {
+      "result": null,
+      "stage": null,
+      "desc": "دخول موظف"
+    },
+    "logout": {
+      "result": null,
+      "stage": null,
+      "desc": "خروج موظف"
+    },
+    "empty_payload_bug": {
+      "result": "rejected",
+      "stage": "lookup",
+      "desc": "Payload وصل من غير variants — تعذّر معرفة أي variant اتغير"
+    },
+    "hmac_failed": {
+      "result": "error",
+      "stage": "lookup",
+      "desc": "فشل التحقق من HMAC — سر التوقيع غلط"
+    },
+    "unexpected_error": {
+      "result": "error",
+      "stage": "lookup",
+      "desc": "استثناء غير متوقع أثناء المعالجة"
+    }
+  }
+}
