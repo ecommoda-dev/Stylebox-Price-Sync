@@ -2,16 +2,19 @@
 
 # مزامنة أسعار Stylebox (`Stylebox-Price-Sync`)
 
-![version](https://img.shields.io/badge/version-v1.2.0-blue)
+![version](https://img.shields.io/badge/version-v1.2.1-blue)
 
 **بتعمل إيه:** بتستقبل ويبهوك `PRODUCTS_UPDATE` من Shopify وبتزامن سعر أي
 variant مربوط بـ `custom.wordpress_variation_id` مع WooCommerce (stylebox.online)
 تلقائيًا، مع هامش سعر ثابت (`PRICE_DIFFERENCE`) وTriple-check (SKU + GTIN).
 فيها كمان مزامنة شاملة يدوية (`bulk_sync_all`) لكل الكتالوج صفحة صفحة.
 **مين بيستخدمها:** حسابات / إدارة المخزون — تشغيل تلقائي بالكامل، الواجهة للمراقبة والمزامنة الشاملة اليدوية بس.
-**الإصدار:** Worker `v1.2.0` · الواجهة `v1.2.0`   ← الاتنين مستقلين. خط الأساس
+**الإصدار:** Worker `v1.2.1` · الواجهة `v1.2.0`   ← الاتنين مستقلين. خط الأساس
 وقت النقل لـ git كان `v1.0.0`/`v1.0.0` (26-08-2026)؛ الرفع الحالي من جردة
-12-09-2026 (دفعات ١+٢+٣ في v1.1.0، ودفعات ٤+٥ في v1.2.0).
+12-09-2026 (دفعات ١+٢+٣ في v1.1.0، ودفعات ٤+٥ في v1.2.0)، و`v1.2.1` (24-09-2026)
+بتاعة `check-log-values.mjs` المصلَّح + تسجيل الـ١٦ قيمة كاملة في
+`log-values.json` + الحارس الديناميكي (الطبقة ٥ — `ecommoda-worker-builder`
+Step 7-ج).
 
 ## الروابط
 
@@ -42,21 +45,16 @@ type  : synced · no_price_change_skipped · not_linked_yet · stale_event_skipp
         hmac_failed · unexpected_error · login · logout
 ```
 
-> 🔴 **ستة `type` لسه غير مسجّلة في `ecommoda-constants` §7** (جردة 12-09-2026):
-> `invalid_price` · `invalid_variant` · `empty_payload_bug` ·
-> `no_triggered_at_header` · `hmac_failed` · `logout`. صف الأداة في §7 فيه
-> التسعة التانيين بس. **ده خرق لـ Rule 7** ومحتاج تسجيل في المهارة — مش تعديل
-> كود هنا. الادعاء القديم تحت («مُسجَّلة») كان **ناقص**، وده بالظبط الدرس
-> المتكرر في §7: الادعاء في `CLAUDE.md` مش دليل تسجيل؛ الدليل `grep` على
-> `SKILL.md` بتاع `ecommoda-constants`.
->
-> ⚠️ **ممنوع إضافة أي `type` جديد في الكود قبل ما يتسجّل هناك.** التعديل ده
-> (v1.2.0) **مضافش ولا قيمة `type` واحدة** عن قصد — كل اللي اتضاف
-> `extra.result` و`extra.stage`، ودول مفردات §12 المقفولة مش قيم `type`.
-
-> ✅ التسعة الباقيين مُسجَّلين في `ecommoda-constants` §7 (26-08-2026 · وأربعة
-> منهم اتسجّلوا 12-09-2026) — مستنتجة
-> من `TOOL_NAME` في الكود المنشور + جرد فعلي لكل قيم `type` في D1.
+> ✅ **البند اللي كان هنا اتقفل 24-09-2026 — مش بتعديل كود، بترحيل التسجيل نفسه.**
+> `ecommoda-constants` v3.1.0 (§7.1) نقلت جدول `tool`/`type` من السكيل لملف
+> `log-values.json` جنب `index.js` في كل ريبو — بالظبط عشان الفجوة اللي كانت
+> هنا (تسجيل قيمة جديدة كان محتاج تغليف + رفع + ضغطة Update من أحمد، خطوة
+> بشرية مؤجلة اتخرقت ٦ مرات في الستاك). الـ١٦ قيمة كلهم (بما فيهم الستة اللي
+> كانوا معلّمين هنا: `invalid_price` · `invalid_variant` · `empty_payload_bug` ·
+> `no_triggered_at_header` · `hmac_failed` · `logout`) مسجّلين دلوقتي في
+> `log-values.json` بتاع الريبو ده، والدليل آلي: `node check-log-values.mjs`
+> (النسخة المصلَّحة — Step 7 في `ecommoda-worker-builder`) بيرجّع exit 0.
+> **الدليل من هنا فصاعدًا `log-values.json` نفسه، مش `CLAUDE.md`.**
 
 > ⚠️ **جدول D1 إضافي:** `stylebox_price_sync_state` (`variant_id` PK ·
 > `last_triggered_at` · `last_synced_regular_price` · `last_synced_sale_price` ·
@@ -72,6 +70,24 @@ type  : synced · no_price_change_skipped · not_linked_yet · stale_event_skipp
 > `success` · `warning` · `error` · `rejected` · `already`) و`extra.stage`
 > (`lookup` / `write`) — وده اللي بيخلّي استعلام خط الأساس يقيس **الكتابة
 > المؤكَّدة** مش المحاولات.
+>
+> ✅ **من v1.2.1: الحارس الديناميكي (الطبقة ٥ — `ecommoda-worker-builder`
+> Step 7-ج) شغّال جوّه `writeLog`.** `LOG_REGISTRY` (`§LOG-REG` في `index.js`)
+> مبني من الـ١٦ قيمة في `log-values.json`. قيمة `(tool, type)` مش مسجّلة
+> **بتتكتب عادي** ومعاها `extra._unregistered = true`، وصف UPSERT بيتحط في
+> `log_value_alerts` (جدول مشترك، `constants` §2) — **مفيش رفض كتابة أبدًا**.
+> مفيش `writeLogsBatch` في الأداة دي (كتابة صف بصف بس)، فالحارس محتاج مكان
+> واحد بس: `writeLog` نفسها — و`safeWriteLog` وكل نداءات `log()` المحلية جوّه
+> `processVariant` بتعدّي عليها كلها.
+>
+> ⚠️ **`log-values.json` فيه `"logAnchors": ["log"]`** — القفلة المحلية
+> `const log = async (entry) => safeWriteLog(env.DB, { tool: TOOL_NAME, sku,
+> ...entry })` جوّه `processVariant` مش من الأسماء الافتراضية في
+> `check-log-values.mjs` (`writeLog` / `safeWriteLog` / …)، فمن غير التسجيل ده
+> الفحص الساكن ما كانش هيشوف ١١ من الـ١٦ قيمة خالص — مش تحذير، اختفاء تام
+> (نفس عيلة `writeLogBatch` بدون `s` وshorthand `{ tool, type }` الموثّقة في
+> السكيل). اتكتشف بمراجعة يدوية لأسماء دوال الكتابة في `processVariant`، مش
+> من أوتبوت الفحص نفسه.
 
 ## المضبوط فعليًا في الداشبورد
 
@@ -172,17 +188,12 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 | المهارة | الإصدار وقت آخر تعديل |
 |---|---|
-| ecommoda-worker-builder | v3.0.0 |
+| ecommoda-worker-builder | v3.7.0 |
 | ecommoda-html-builder | v7.0.0 |
-| ecommoda-constants | v2.1.0 |
+| ecommoda-constants | v3.1.0 |
 
-آخر مطابقة: 12-09-2026 · `index.js` v1.2.0 · `index.html` v1.2.0
+آخر مطابقة: 24-09-2026 · `index.js` v1.2.1 · `index.html` v1.2.0
 🔴 معلّقة:
-- 🔴 **ستة قيم `type` غير مسجّلة في `ecommoda-constants` §7** (راجع قسم D1 فوق):
-  `invalid_price` · `invalid_variant` · `empty_payload_bug` ·
-  `no_triggered_at_header` · `hmac_failed` · `logout`. **البند ده مش قابل
-  للإصلاح من الريبو ده** — التسجيل بيحصل في المهارة، والأداة بتكتب القيم دي
-  فعليًا في D1 دلوقتي (خرق Rule 7 قائم).
 - 🟡 **٤٥٠ صف `sku_mismatch`** في خط الأساس القديم — رقم كبير نسبيًا لأداة
   شغّالة بانتظام، ومش مشكلة كود. (أغلب الصفوف دي اتمسحت في تنظيف 12-09،
   فالمراجعة بقت على الصفوف الجديدة.)
@@ -206,6 +217,6 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 ---
 
-آخر تحديث: 12-09-2026 — 14:10
+آخر تحديث: 24-09-2026 — تحديث `check-log-values.mjs` (يمسك object shorthand) + تسجيل الـ١٦ قيمة كاملة في `log-values.json` + الحارس الديناميكي (الطبقة ٥)
 
 </div>
