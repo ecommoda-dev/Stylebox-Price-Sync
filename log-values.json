@@ -1,6 +1,7 @@
 {
   "tool": "stylebox_price_sync",
-  "since": null,
+  "since": "index.js v1.2.0",
+  "logAnchors": ["log"],
   "types": {
     "login": {
       "result": null,
@@ -12,20 +13,75 @@
       "stage": null,
       "desc": "خروج موظف"
     },
+    "hmac_failed": {
+      "result": "error",
+      "stage": "lookup",
+      "desc": "فشل التحقق من HMAC — سر التوقيع غلط (CLIENT_SECRET غلط) أو الـ body اتغيّر"
+    },
+    "unexpected_error": {
+      "result": "error",
+      "stage": "lookup",
+      "desc": "استثناء غير متوقع أثناء معالجة الويبهوك أو الـ variant"
+    },
     "empty_payload_bug": {
       "result": "rejected",
       "stage": "lookup",
       "desc": "Payload وصل من غير variants — تعذّر معرفة أي variant اتغير"
     },
-    "hmac_failed": {
-      "result": "error",
+    "invalid_variant": {
+      "result": "rejected",
       "stage": "lookup",
-      "desc": "فشل التحقق من HMAC — سر التوقيع غلط"
+      "desc": "variant من غير admin_graphql_api_id — تعذّر تحديد الـ variant ID"
     },
-    "unexpected_error": {
-      "result": "error",
+    "not_linked_yet": {
+      "result": "rejected",
       "stage": "lookup",
-      "desc": "استثناء غير متوقع أثناء المعالجة"
+      "desc": "الـ variant ده لسه من غير custom.wordpress_variation_id metafield"
+    },
+    "stale_event_skipped": {
+      "result": "rejected",
+      "stage": "lookup",
+      "desc": "الحدث ده أقدم من (أو مساوي لـ) آخر حدث اتعالج لنفس الـ variant — تم التجاهل"
+    },
+    "no_triggered_at_header": {
+      "result": null,
+      "stage": "lookup",
+      "desc": "معلوماتي — X-Shopify-Triggered-At مش موجود، تم التنفيذ من غير ordering guard. مالوش extra.result، والـ variant بياخد صفه الكامل بعده (Step 5A ⑭ الاستثناء الوحيد)"
+    },
+    "invalid_price": {
+      "result": "rejected",
+      "stage": "lookup",
+      "desc": "price غير صالح جاي من Shopify"
+    },
+    "no_price_change_skipped": {
+      "result": "already",
+      "stage": "lookup",
+      "desc": "السعر المحسوب مطابق لآخر قيمة اتزامنت — لا داعي لنداء WordPress"
+    },
+    "wp_variation_not_found": {
+      "result": "rejected",
+      "stage": "lookup",
+      "desc": "WordPress Variation Id مش موجود على WordPress"
+    },
+    "sku_mismatch": {
+      "result": "rejected",
+      "stage": "lookup",
+      "desc": "SKU مختلف بين Shopify وWordPress — Triple-check فشل"
+    },
+    "gtin_mismatch": {
+      "result": "rejected",
+      "stage": "lookup",
+      "desc": "GTIN لا يطابق Variant ID — Triple-check فشل"
+    },
+    "synced": {
+      "result": "success",
+      "stage": "write",
+      "desc": "تمّت مزامنة السعر بنجاح على WooCommerce"
+    },
+    "wp_update_failed": {
+      "result": "error",
+      "stage": "write",
+      "desc": "نداء التحديث على WooCommerce وصل واترفض"
     }
   }
 }
