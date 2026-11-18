@@ -15,6 +15,10 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, extname, relative } from 'node:path';
 
+// نسخة الكاشف — وصفة الجرد LOG-checker-blind-shorthand بتدوّر على السطر ده (worker-builder v3.8.1).
+// v3.2 = shorthand + المفتاح المحسوب + الـspread + حارس `${type}` + كاشف `INSERT INTO logs` (مايعتمدش على اسم دالة).
+const CHECK_VERSION = 'v3.2';
+
 // ── المفردات المقفولة (§12) ────────────────────────────────────────────────
 const RESULTS = ['success', 'rejected', 'already', 'warning', 'error'];
 const STAGES  = ['lookup', 'write', 'preflight'];
