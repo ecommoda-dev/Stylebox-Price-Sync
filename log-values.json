@@ -1,7 +1,9 @@
 {
   "tool": "stylebox_price_sync",
   "since": "index.js v1.2.0",
-  "logAnchors": ["log"],
+  "logAnchors": [
+    "log"
+  ],
   "types": {
     "login": {
       "result": null,
@@ -20,7 +22,10 @@
     },
     "unexpected_error": {
       "result": "error",
-      "stage": "lookup",
+      "stage": [
+        "lookup",
+        "write"
+      ],
       "desc": "استثناء غير متوقع أثناء معالجة الويبهوك أو الـ variant"
     },
     "empty_payload_bug": {
@@ -81,7 +86,12 @@
     "wp_update_failed": {
       "result": "error",
       "stage": "write",
-      "desc": "نداء التحديث على WooCommerce وصل واترفض"
+      "desc": "نداء التحديث على WooCommerce وصل واترفض (bad_request أو save_failed من endpoint الدفعات)"
+    },
+    "rate_limited": {
+      "result": "warning",
+      "stage": "write",
+      "desc": "WordPress رفض بسبب سقف الاستضافة 429 (جسم فاضي) — اتوقفت الدورة والحجز اترجّع. صف لكل variant ما اتبعتش، والتحديث بيتأجّل مش بيفشل"
     }
   }
 }

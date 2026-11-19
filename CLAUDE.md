@@ -2,14 +2,14 @@
 
 # مزامنة أسعار Stylebox (`Stylebox-Price-Sync`)
 
-![version](https://img.shields.io/badge/version-v1.3.0-blue)
+![version](https://img.shields.io/badge/version-v1.4.0-blue)
 
 **بتعمل إيه:** بتستقبل ويبهوك `PRODUCTS_UPDATE` من Shopify وبتزامن سعر أي
 variant مربوط بـ `custom.wordpress_variation_id` مع WooCommerce (stylebox.online)
 تلقائيًا، مع هامش سعر ثابت (`PRICE_DIFFERENCE`) وTriple-check (SKU + GTIN).
 فيها كمان مزامنة شاملة يدوية (`bulk_sync_all`) لكل الكتالوج صفحة صفحة.
 **مين بيستخدمها:** حسابات / إدارة المخزون — تشغيل تلقائي بالكامل، الواجهة للمراقبة والمزامنة الشاملة اليدوية بس.
-**الإصدار:** Worker `v1.2.1` · الواجهة `v1.2.0`   ← الاتنين مستقلين. خط الأساس
+**الإصدار:** Worker `v1.4.0` · الواجهة `v1.4.0`   ← الاتنين مستقلين (v1.4.0 = حل الـ 429: دفعات + circuit breaker + استئناف). خط الأساس
 وقت النقل لـ git كان `v1.0.0`/`v1.0.0` (26-08-2026)؛ الرفع الحالي من جردة
 12-09-2026 (دفعات ١+٢+٣ في v1.1.0، ودفعات ٤+٥ في v1.2.0)، و`v1.2.1` (24-09-2026)
 بتاعة `check-log-values.mjs` المصلَّح + تسجيل الـ١٦ قيمة كاملة في
@@ -30,10 +30,27 @@ Step 7-ج).
 |---|---|
 | `POST /webhook` | مستقبِل ويبهوك Shopify `PRODUCTS_UPDATE` — HMAC بـ `CLIENT_SECRET` (مش `SHOPIFY_WEBHOOK_SECRET` — مسجّل عن طريق Webhook Control Center) |
 | `check_employee` / `register_pin` / `verify_employee` / `log_logout` / `get_employees` | Universal D1 Auth القياسي |
-| `bulk_sync_all` | صفحة واحدة (40 variant) من كل الكتالوج — بترجع `cursor` للصفحة الجاية |
-| `diag` | فحص ذاتي **بدون أي كتابة**: الأسرار (أسماء وأطوال بس) · `PRICE_DIFFERENCE` **بقيمتها** (var مش سر، وهي الفخ الموثّق تحت) · D1 والجدولين · شوبيفاي OAuth والصلاحيات و`throttleStatus` · endpoint ووردبريس (GET على variation وهمي، 404 = شغّال والسر مقبول) |
+| `bulk_sync_all` | صفحة واحدة (40 variant) من كل الكتالوج — بترجع `cursor` للصفحة الجاية. **v1.4.0:** بتتخطّى كاش «آخر مزامنة» (`force`) وبتبعت الصفحة على دفعتين (≈ نداءين لووردبريس). الرد: `ok` · `scanned` · `linked` · `results` (عدّادات الخمس مفردات) · `deferred` · `rateLimited` · `retryAfterSec` · `hasMore` · `nextCursor` · `done`. لو `rateLimited:true` فـ `nextCursor` = **نفس cursor الصفحة** والواجهة بتعيدها بعد انتظار |
+| `diag` | فحص ذاتي **بدون أي كتابة**: الأسرار (أسماء وأطوال بس) · `PRICE_DIFFERENCE` **بقيمتها** (var مش سر، وهي الفخ الموثّق تحت) · D1 والجدولين · شوبيفاي OAuth والصلاحيات و`throttleStatus` · endpoint ووردبريس القديم (GET على variation وهمي، 404 = شغّال والسر مقبول) **+ endpoint الدفعات** (`POST variation-prices` بـ `items: []` — **400 = شغّال**، `404` = السنيپت لسه ما اتلصقش، `401/403` = السر غلط) |
 | `get_config` | نسخة الـ Worker (`WORKER_VERSION`) — الواجهة بتقارنها بـ `MIN_WORKER_VERSION` عندها وبتحذّر لو الـ Worker أقدم (Promote ناقص / rollback) |
 | `get_logs` / `get_logs_count` / `get_logs_export` | سجل العمليات — فلترة وعدّ وترتيب **كلهم server-side**. الفلاتر المقبولة على التلاتة بنفس المجموعة: `employees` · `types` (CSV) · `search` (بيدوّر في **`sku`**) · `searchNotes` · `dateFrom` · `dateTo` · `sortBy`/`sortDir` (على `get_logs` بس). و`get_logs_export` بيرجّع `cap` و`total` و`truncated` جنب الصفوف |
+
+## الاتصال بـ WordPress — endpoint الدفعات (v1.4.0)
+
+```
+POST https://stylebox.online/wp-json/ecommoda/v1/variation-prices      ← الوحيد اللي الـ Worker بينادي عليه دلوقتي
+Header: X-Sync-Header-Secret: <SYNC_SECRET>
+Body : { items: [{ variation_id, expected_sku, expected_gtin, regular_price, sale_price }] }   (≤ 50 item، الـ Worker بيبعت 20)
+Reply: { success, summary, results[] }  — results بنفس ترتيب المدخلات + index
+        status: updated | unchanged | sku_mismatch | gtin_mismatch | not_found | bad_request | save_failed
+        (HTTP 200 حتى لو فيه items فاشلة — الفشل الجزئي مش خطأ HTTP)
+الكود: wordpress/variation-prices-snippet.php (للّصق في WPCode من غير <?php جوّه نفس rest_api_init)
+```
+
+- الـ routes القديمة (`GET/POST variation-price/{id}`) **لسه على الموقع** للتوافق ومابتتنادّاش من الـ Worker. **متمسحهاش** في الجولة دي.
+- **سقف 429 (Hostinger):** نافذة متحركة ≈ ٣٠ نداء / ٣٠–٦٠ ث **مشتركة بين كل الـ Workers**. الميزانية: ٤٠ variant = ٢ نداء (كانت ٨٠). 429 بجسم **فاضي** = السقف → `RateLimitError` → **circuit breaker** (يوقف الدورة، يرجّع الحجوزات، صف `rate_limited` لكل variant، **مفيش إعادة محاولة** جوّه نفس الاستدعاء). 429 بجسم JSON = خطأ عادي.
+- **الويبهوك لو اترفض بـ 429 التحديث بيضيع** (شوبيفاي مش هتعيد بعد الـ 200) — التعويض: الصف `rate_limited` + المزامنة الشاملة بتلحقه. طابور D1 + Cron للويبهوك **مؤجل** (Tier 4).
+- الكاش `stylebox_price_sync_state` = **آخر قيمة زامنّاها** مش القيمة الفعلية على WC (ممكن «يكدّب» لو السعر اتغيّر بره الأداة). عشان كده الشاملة بتتخطّاه والويبهوك لأ.
 
 ## D1
 
@@ -42,8 +59,10 @@ tool  : stylebox_price_sync
 type  : synced · no_price_change_skipped · not_linked_yet · stale_event_skipped ·
         sku_mismatch · gtin_mismatch · wp_variation_not_found · wp_update_failed ·
         invalid_price · invalid_variant · empty_payload_bug · no_triggered_at_header ·
-        hmac_failed · unexpected_error · login · logout
+        hmac_failed · unexpected_error · rate_limited · login · logout
 ```
+
+> **`rate_limited`** (v1.4.0): `result=warning` · `stage=write` — صف **لكل variant** ما اتبعتش لأن WordPress رفض بـ 429. مش فشل: الحجز اترجّع والتحديث بيتأجّل (الشاملة بتلحقه).
 
 > ✅ **البند اللي كان هنا اتقفل 24-09-2026 — مش بتعديل كود، بترحيل التسجيل نفسه.**
 > `ecommoda-constants` v3.1.0 (§7.1) نقلت جدول `tool`/`type` من السكيل لملف
@@ -200,19 +219,23 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 | المهارة | الإصدار وقت آخر تعديل |
 |---|---|
-| ecommoda-worker-builder | v4.0.0 |
-| ecommoda-html-builder | v9.1.0 |
-| ecommoda-constants | v6.0.0 |
-| shopify-graphql-helper | v3.0.1 |
-| woocommerce-sync-helper | v2.1.0 |
+| ecommoda-worker-builder | v4.2.0 |
+| ecommoda-html-builder | v9.1.1 |
+| ecommoda-constants | v6.0.1 |
+| shopify-graphql-helper | v3.2.0 |
+| woocommerce-sync-helper | v2.2.0 |
 
-آخر مطابقة: 18-11-2026 · `index.js` v1.3.0 · `index.html` v1.3.0
+آخر مطابقة: 19-11-2026 · `index.js` v1.4.0 · `index.html` v1.4.0
 🔴 معلّقة:
+- 🟡 **طابور D1 + Cron للويبهوك = مؤجل** (Tier 4، خارج نطاق v1.4.0): ويبهوك اتّرفض بـ 429 بيضيع (صف `rate_limited` + الشاملة بتلحقه). بيتعمل بس لو أحمد طلب.
+- 🟡 **`PRICE_DIFFERENCE`: تعارض بين الوثائق والـ `wrangler.toml`** — `CLAUDE.md` فوق بيقول `100` متأكَّدة من D1 (26-08-2026)، و`wrangler.toml` فيه `"0"`. اتلاحظ في جلسة v1.4.0 ومالمستوش — تحقق من 🩺 فحص النظام (بيعرض القيمة الفعلية) قبل أول مزامنة شاملة.
+- 🟡 **POST القديم `variation-price/{id}` مابينادّيش `WC_Product_Variable::sync()`** (بيمسح transients بس) — تحسين آمن اختياري على سنيپت ووردبريس القديم، مش شرط.
 - 🟡 **٤٥٠ صف `sku_mismatch`** في خط الأساس القديم — رقم كبير نسبيًا لأداة
   شغّالة بانتظام، ومش مشكلة كود. (أغلب الصفوف دي اتمسحت في تنظيف 12-09،
   فالمراجعة بقت على الصفوف الجديدة.)
 - 🟡 **Build watch paths** (chip لـ`index.js` وchip منفصل لـ`wrangler.toml`) — إعداد في داشبورد Cloudflare مش في الريبو، ماتأكدش منه من الجلسة دي.
 - 🟡 **شاشة السجل لسه على الشكل القديم (قسم فلاتر فوق الجدول — `S47`) ومن غير تحكم في عرض الأعمدة (`S51`)** — معيار الجداول الجديد (فلاتر في رأس العمود + قايمة `position:fixed` + مقبض سحب العرض، `data-table-standard.md` §2 و§9ب) إعادة تصميم كبيرة لشاشة تشغيل حيّة. اتأجّلت **بقرار مقصود** 18-11-2026 (المهارة نفسها بتصنّفها 🟡 «عند أول فتح، مش في حملة») عشان ما تتغيّرش من غير مراجعة بصرية حقيقية. تتعمل في جلسة مخصصة بـ `templates/24_data-table-section.html` + اختبار Playwright.
+- ⚠️ **اختبار حي لازم بعد النشر (v1.4.0):** (١) الصق `wordpress/variation-prices-snippet.php` على الموقع **الأول** (قبل نشر الـ Worker) · (٢) `?action=diag` ← `WooCommerce batch endpoint` ✅ (400) · (٣) `get_config` = `1.4.0` · (٤) مزامنة شاملة صفحة واحدة ثم الكاملة، وراجع استعلامات السجل (صفر `WP GET failed`، `log_value_alerts` فاضي).
 - ⚠️ **اختبار حي لازم بعد النشر:** Worker على API `2026-10` — اضغط 🩺 فحص النظام (لازم `Shopify OAuth ✅`)، وبعدين غيّر سعر variant في شوبيفاي وتأكد إن صف `synced` اتكتب.
 
 > سطر **🔴 معلّقة** = أي بند كاسر **معروف ومتقرر تأجيله**، بسببه.
@@ -227,6 +250,6 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 ---
 
-آخر تحديث: 18-11-2026 — 23:51 — مواءمة مع المهارات الحالية (API 2026-10 · إعادة محاولة التوكن · قياس التكلفة · خروج تلقائي 60 د)
+آخر تحديث: 20-11-2026 — 00:19 — v1.4.0: حل الـ 429 (endpoint دفعات + circuit breaker + استئناف تلقائي + الشاملة تتخطّى الكاش)
 
 </div>

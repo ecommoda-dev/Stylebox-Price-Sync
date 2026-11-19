@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <!-- skills: html-builder v9.1.0 · constants v6.0.0 — 18-11-2026 -->
+  <!-- skills: html-builder v9.1.1 · constants v6.0.1 — 19-11-2026 -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>مزامنة الأسعار — Stylebox — EcomModa</title>
@@ -746,7 +746,19 @@ body {
       <!-- Latest version — blue badge (النص من TOOL_VERSION) -->
       <div class="cl-version-block">
           <div class="cl-version-row">
-            <span class="cl-ver-badge" id="clLatestBadge">v1.3.0</span>
+            <span class="cl-ver-badge" id="clLatestBadge">v1.4.0</span>
+            <span class="cl-ver-date">19-11-2026</span>
+          </div>
+          <ul class="cl-items">
+            <li class="cl-item"><span class="cl-tag new">جديد</span><span>نداءات ووردبريس بالدفعات: بدل نداءين لكل variant (قراءة ثم كتابة) بقى نداء واحد لكل <b>20 variant</b> — والتحقق من الـ SKU/GTIN بقى على سيرفر ووردبريس. صفحة المزامنة الشاملة (40 variant) = <b>2 نداء</b> بدل 80.</span></li>
+            <li class="cl-item"><span class="cl-tag fix">إصلاح</span><span>الـ 429 (سقف الاستضافة): أول رفض بيوقف الدورة ويرجّع الحجوزات فورًا بدل ما يضرب باقي الـ variants — وبيتسجّل <code>rate_limited</code> لكل variant متأجّل (مش فشل).</span></li>
+            <li class="cl-item"><span class="cl-tag new">جديد</span><span>المزامنة الشاملة بتستنى تلقائيًا (90 ← 120 ← 150 ث بعدّاد تنازلي) وتكمّل من <b>نفس الصفحة</b> لو الموقع رفض مؤقتًا، ولو فضل رافض بتوقف ومعاك زرار «كمّل من آخر نقطة». عدّاد «⏳ مؤجّل» منفصل عن الفشل، والفاصل بين الصفحات بقى 1.5 ث.</span></li>
+            <li class="cl-item"><span class="cl-tag change">تغيير</span><span>المزامنة الشاملة بقت بتتخطّى كاش «آخر مزامنة» وبتقارن بالسعر الحقيقي على الموقع (الكاش كان بيكدّب لو السعر اتغيّر بره الأداة). الويبهوك لسه بيستخدم الكاش. الـ Worker لازم يكون <code>v1.4.0</code>+.</span></li>
+          </ul>
+        </div>
+        <div class="cl-version-block">
+          <div class="cl-version-row">
+            <span class="cl-ver-badge old">v1.3.0</span>
             <span class="cl-ver-date">18-11-2026</span>
           </div>
           <ul class="cl-items">
@@ -842,7 +854,7 @@ body {
           <h4>الـ Endpoints الرئيسية</h4>
           <table>
             <tr><th>action</th><th>الوصف</th></tr>
-            <tr><td><code>bulk_sync_all</code></td><td>صفحة واحدة (40 variant) من الكتالوج — بترجع cursor للصفحة الجاية</td></tr>
+            <tr><td><code>bulk_sync_all</code></td><td>صفحة واحدة (40 variant = نداءين لووردبريس) من الكتالوج — بترجع cursor للصفحة الجاية، ولو <code>rateLimited</code> بترجع نفس الـ cursor + <code>retryAfterSec</code></td></tr>
             <tr><td><code>get_logs</code></td><td>صفحة واحدة من السجل (100 صف) — فلترة وترتيب وعدّ كلهم server-side</td></tr>
             <tr><td><code>get_logs_count</code></td><td>العدد الكلي المطابق للفلاتر — للصفحات وللأرقام على الشاشة</td></tr>
             <tr><td><code>get_logs_export</code></td><td>كل المطابق للفلاتر لحد السقف (2000) — بيرجّع <code>cap</code> و<code>total</code> و<code>truncated</code> عشان التقصّ يبان</td></tr>
@@ -860,7 +872,7 @@ body {
           <ul>
             <li><code>§AUTH</code> — Universal D1 Auth (check_employee / register_pin / verify_employee / log_logout)</li>
             <li><code>§IDLE-JS</code> — الخروج التلقائي لعدم النشاط (<code>IDLE_TIMEOUT_MIN = 60</code>) + <code>performLogout(reason)</code> (Standards #52)</li>
-            <li><code>§TOOL-JS::bulkSync</code> — تشغيل مزامنة شاملة صفحة صفحة عن طريق <code>bulk_sync_all</code> + cursor</li>
+            <li><code>§TOOL-JS::bulkSync</code> — تشغيل مزامنة شاملة صفحة صفحة عن طريق <code>bulk_sync_all</code> + cursor، مع انتظار واستئناف تلقائي عند 429 (<code>runBulkSyncLoop</code> · <code>resumeBulkSync</code>)</li>
             <li><code>§LOG-ENDPOINTS</code> — get_logs / get_logs_count / get_logs_export (فلترة + عدّ + ترتيب من السيرفر)</li>
             <li><code>§CONFIG::time</code> — توقيت القاهرة بـ <code>Intl</code> (مفيش إزاحة ثابتة)</li>
             <li><code>§CONFIG::esc</code> — تهريب أي قيمة جاية من الـ API قبل <code>innerHTML</code></li>
@@ -881,7 +893,8 @@ body {
             <li><code>LS_SECRET = 'stylebox_price_sync_worker_secret'</code> — المفتاح الوحيد في localStorage</li>
             <li><code>msState</code> — حالة فلاتر الاختيار المتعدد (نوع العملية · الموظف)</li>
             <li><code>logSortBy / logSortDir</code> — الترتيب الحالي، بيتبعت لـ <code>get_logs</code> بس</li>
-            <li><code>BULK_PAGE_HINT = 40</code> — للعرض في نافذة التأكيد بس؛ السلطة <code>BULK_SYNC_PAGE_SIZE</code> في الـ Worker</li>
+            <li><code>BULK_PAGE_HINT = 40</code> · <code>WP_BATCH_HINT = 20</code> — للعرض في نافذة التأكيد بس؛ السلطة <code>BULK_SYNC_PAGE_SIZE</code> و<code>WP_BATCH_SIZE</code> في الـ Worker</li>
+            <li><code>BULK_BACKOFF_SEC = [90, 120, 150]</code> · <code>BULK_PAGE_GAP_MS = 1500</code> — انتظار الـ 429 والفاصل بين الصفحات</li>
             <li><code>bulkCursor / bulkPages / bulkScanned / bulkLinked</code> — حالة المزامنة الشاملة، في الذاكرة فقط (بترجع للصفر لو الصفحة اتقفلت أو حصل خطأ)</li>
             <li><code>TOOL_VERSION</code> — نسخة الواجهة، مصدر واحد بيملّي زرار الهيدر وبادج الـ Changelog</li>
             <li><code>MIN_WORKER_VERSION</code> — أقل نسخة Worker الواجهة دي بتشتغل معاها (مالهاش أي علاقة بـ TOOL_VERSION)</li>
@@ -892,8 +905,8 @@ body {
 
           <h4>NOTES</h4>
           <ul>
-            <li>المزامنة الشاملة (bulk_sync_all) بتاخد وقت حسب عدد الـ variants — مفيش استئناف تلقائي لو حصل خطأ في نص الطريق، هتبدأ من الأول.</li>
-            <li>المنطق الحقيقي لحساب السعر والـ triple-check موجود مرة واحدة بس (processVariant) — الويبهوك والمزامنة الشاملة بيستخدموا نفس الدالة.</li>
+            <li>المزامنة الشاملة (bulk_sync_all) بتاخد وقت حسب عدد الـ variants. لو ووردبريس رفض بـ 429 (سقف الاستضافة) بتستنى وتعيد <b>نفس الصفحة</b> (لحد 3 مرات)، وبعدها بتوقف ومعاك «كمّل من آخر نقطة» — نقطة الاستئناف في ذاكرة الصفحة بس، refresh بيمسحها.</li>
+            <li>منطق حساب السعر وحراس ما-قبل-ووردبريس موجود مرة واحدة بس (<code>prepareVariant</code>)، والإرسال بالدفعات (<code>flushBatch</code>) — الويبهوك والمزامنة الشاملة بيستخدموا نفس الدالتين. الـ triple-check (SKU + GTIN) بقى على سيرفر ووردبريس.</li>
             <li>سجل العمليات كله server-side: الفلاتر والعدّ والصفحات بتتعمل في الـ Worker، والتصدير بيجيب المطابق للفلاتر كله (مش الصفحة المعروضة ولا الاختيار). لو التصدير وصل للسقف، بانر أحمر فوق الجدول بيقول الرقمين.</li>
             <li>الترتيب (sortBy/sortDir) مدعوم في الـ Worker من v1.1.0 — واجهة الضغط على رأس العمود بتيجي مع تحويل السجل لجدول.</li>
             <li>فلتر التاريخ بيقارن بـ <code>timestamp</code> المخزّن (UTC) والعرض بتوقيت القاهرة — فرق الساعات ممكن يحط عملية بعد 9 مساءً في يوم UTC اللي بعده. مقبول لفلتر بالأيام.</li>
@@ -1079,6 +1092,8 @@ body {
       <div><span>ℹ️ متعمل خلاص</span><strong id="bulkResAlready">0</strong></div>
       <div><span>➖ مرفوض</span><strong id="bulkResRejected">0</strong></div>
       <div><span>❌ فشل</span><strong id="bulkResError">0</strong></div>
+      <!-- ⏳ مؤجّل بسبب سقف الاستضافة (429) — **مش فشل**؛ الواجهة بتعيد نفس الصفحة بعد انتظار -->
+      <div><span>⏳ مؤجّل (سقف الاستضافة)</span><strong id="bulkResDeferred">0</strong></div>
     </div>
     <div class="bulk-log" id="bulkLogLine">جاري البدء…</div>
     <button class="btn-danger" onclick="stopBulkSync()">⏹ إيقاف</button>
@@ -1086,6 +1101,8 @@ body {
 
   <div id="bulkSyncDone" style="display:none;">
     <div class="bulk-done-msg" id="bulkDoneMsg"></div>
+    <!-- يظهر بس لو المزامنة وقفت عند 429 متكرر — بيكمّل من آخر cursor (state في المتغيّرات، مش localStorage) -->
+    <button class="btn-primary" id="bulkResumeBtn" style="display:none;" onclick="resumeBulkSync()">▶️ كمّل من آخر نقطة</button>
     <button class="btn-secondary" onclick="resetBulkSync()">إعادة تشغيل</button>
   </div>
 </div></div>
@@ -1295,21 +1312,32 @@ body {
 // ── Config ────────────────────────────────────────────────────
 // نسخة الواجهة — مصدر **واحد** بيملّي زرار الهيدر وبادج الـ Changelog عن طريق
 // renderVersionUI(). (نص النسخة في شاشة الدخول — Standards #24 — لسه مطلوب.)
-const TOOL_VERSION = '1.3.0';
+const TOOL_VERSION = '1.4.0';
 
 // عدد الـ variants في صفحة المزامنة الشاملة — **للعرض في نافذة التأكيد بس**.
 // السلطة الحقيقية BULK_SYNC_PAGE_SIZE في الـ Worker؛ لو اتغيّرت هناك، الرقم
 // ده بيبقى وصف قديم مش سلوك غلط.
 const BULK_PAGE_HINT = 40;
+// عدد الـ variants في النداء الواحد لووردبريس — **للعرض بس** (السلطة WP_BATCH_SIZE في الـ Worker).
+const WP_BATCH_HINT = 20;
+
+// 🔴 استئناف المزامنة الشاملة بعد 429 (سقف الاستضافة): ننتظر ثم نعيد **نفس الـ cursor**
+//    (مش من أول الكتالوج). جدول backoff تصاعدي، وحد أقصى 3 محاولات متتالية على نفس الصفحة.
+//    النافذة بتفضى بعد ~1.5–2 دقيقة سكون (woocommerce-sync-helper Step 3.5).
+const BULK_BACKOFF_SEC  = [90, 120, 150];
+// الفاصل بين صفحات bulk — متوازي ممنوع والنافذة مشتركة بين كل الـ Workers
+const BULK_PAGE_GAP_MS  = 1500;
 
 // 🟠 أقل نسخة Worker الواجهة دي بتشتغل معاها. الصفحة بقت بتقرا
 //    cap/total/truncated من get_logs_export و version من get_config (v1.1.0)،
 //    وكمان `results` من bulk_sync_all و`checks` من diag و`extra.result` في
 //    صفوف السجل — والتلاتة دول اتضافوا في الـ Worker **v1.2.0**.
+//    ✅ v1.4.0: الواجهة بقت بتعتمد على `rateLimited` / `retryAfterSec` / `deferred`
+//    في رد bulk_sync_all — Worker أقدم هيتجاهلهم **في صمت** (429 يتحسب فشل).
 //    Worker أقدم **مش هيرجّع خطأ**، هيرجّع
 //    undefined في صمت → رسالة نجاح على تصدير مقصوص. عشان كده الحارس إلزامي
 //    في نفس التسليم اللي بيضيف القراءة.
-const MIN_WORKER_VERSION = '1.2.0';
+const MIN_WORKER_VERSION = '1.4.0';
 
 // 🔴 رابط الـ Worker **ثابت في الكود**، مش حقل إعدادات ولا localStorage:
 //    الرابط مش سر (الحماية في WORKER_SECRET + CORS allowlist)، واسم الـ Worker
@@ -2114,6 +2142,10 @@ let bulkScanned        = 0;
 let bulkLinked         = 0;
 // عدّادات النتايج المجمّعة من ردود الصفحات (مفردات constants §12)
 let bulkResults        = { success: 0, warning: 0, error: 0, rejected: 0, already: 0 };
+let bulkDeferred       = 0;      // اللي لسه متأجّل بعد آخر محاولة (429) — مش من مفردات result
+let bulkWaits          = 0;      // عدد مرات الانتظار بسبب 429 في التشغيلة دي (معلومة للملخّص)
+// نقطة الاستئناف — state في متغيّر الجلسة، **مش** localStorage (يضيع مع refresh عن قصد)
+let bulkResume         = { available: false, cursor: null };
 
 async function startBulkSync() {
   // 🔴 حارس برمجي جنب القفل البصري — القفل لوحده مابيمنعش النداء (Standards #43)
@@ -2125,10 +2157,11 @@ async function startBulkSync() {
     header: '⚠️ تأكيد المزامنة الشاملة',
     lead:   'المزامنة هتمشي على كل الكتالوج في شوبيفاي صفحة صفحة:',
     lines: [
-      { text: `📄 ${BULK_PAGE_HINT} variant في كل نداء، والعملية بتكمّل لحد آخر الكتالوج` },
-      { text: '💰 كل variant مربوط بـ WooCommerce هيتكتب سعره (regular + sale) على stylebox.online' },
-      { text: 'ℹ️ الـ variant اللي سعره مطابق لآخر مزامنة بيتخطّى — مفيش كتابة بلا داعي', soft: true },
-      { text: '⏱ مفيش استئناف تلقائي لو حصل خطأ في النص — الإعادة تبدأ من أول الكتالوج', soft: true },
+      { text: `📄 ${BULK_PAGE_HINT} variant في كل صفحة، والعملية بتكمّل لحد آخر الكتالوج` },
+      { text: `🌐 حوالي ${bulkExpectedWpCalls()} لتحقق/كتابة على ووردبريس لكل ${BULK_PAGE_HINT} variant مربوط (دفعات ${WP_BATCH_HINT}) — الكتالوج كله ≈ ⌈عدد المربوط ÷ ${WP_BATCH_HINT}⌉ نداء` },
+      { text: '💰 كل variant مربوط بـ WooCommerce هيتقارن سعره (regular + sale) على stylebox.online، واللي مختلف فعلًا هيتكتب' },
+      { text: 'ℹ️ المزامنة الشاملة بتتخطّى كاش «آخر مزامنة» — بتقارن بالسعر الحقيقي على الموقع، فبتصلّح الأسعار اللي اتغيّرت من بره الأداة', soft: true },
+      { text: '⏳ لو الموقع رفض مؤقتًا (سقف الاستضافة 429) الأداة بتستنى تلقائيًا (90–150 ث) وتكمّل من نفس الصفحة — لحد 3 محاولات، وبعدها بتوقف ومعاك زرار «كمّل من آخر نقطة»', soft: true },
     ],
     okLabel: 'تأكيد — ابدأ المزامنة',
   });
@@ -2137,6 +2170,8 @@ async function startBulkSync() {
   bulkRunning = true; bulkStopRequested = false; bulkCursor = null;
   bulkPages = 0; bulkScanned = 0; bulkLinked = 0;
   bulkResults = { success: 0, warning: 0, error: 0, rejected: 0, already: 0 };
+  bulkDeferred = 0; bulkWaits = 0;
+  bulkResume = { available: false, cursor: null };
   setUpdateLock(true);
   document.getElementById('bulkSyncIdle').style.display = 'none';
   document.getElementById('bulkSyncDone').style.display = 'none';
@@ -2146,39 +2181,97 @@ async function startBulkSync() {
   runBulkSyncLoop();
 }
 
+// «كمّل من آخر نقطة» — نفس العدّادات ونفس الـ cursor، من غير إعادة من أول الكتالوج
+function resumeBulkSync() {
+  if (bulkRunning || isUpdating || !bulkResume.available) return;
+  bulkRunning = true; bulkStopRequested = false;
+  bulkCursor = bulkResume.cursor;
+  bulkResume = { available: false, cursor: null };
+  setUpdateLock(true);
+  document.getElementById('bulkSyncDone').style.display = 'none';
+  document.getElementById('bulkSyncRunning').style.display = 'block';
+  updateBulkStats();
+  document.getElementById('bulkLogLine').textContent = 'بيكمّل من آخر نقطة…';
+  runBulkSyncLoop();
+}
+
+// عدد نداءات ووردبريس المتوقع لصفحة كاملة (الكتالوج كله ≈ ⌈المربوط ÷ WP_BATCH_HINT⌉)
+function bulkExpectedWpCalls() {
+  return Math.ceil(BULK_PAGE_HINT / WP_BATCH_HINT);
+}
+
+// انتظار بعدّاد تنازلي — بيتقطع فورًا لو الموظف داس «إيقاف»
+async function bulkCountdown(totalSec, prefix) {
+  for (let left = totalSec; left > 0; left--) {
+    if (bulkStopRequested) return false;
+    document.getElementById('bulkLogLine').textContent = `${prefix} — هستنى ${left} ثانية وأكمّل من نفس المكان…`;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return !bulkStopRequested;
+}
+
 function stopBulkSync() {
   bulkStopRequested = true;
   document.getElementById('bulkLogLine').textContent = 'بيتوقف بعد الصفحة الحالية…';
 }
 
 async function runBulkSyncLoop() {
+  let rlStreak = 0;   // محاولات 429 المتتالية على نفس الصفحة
   try {
     while (true) {
       if (bulkStopRequested) {
-        finishBulkSync(`⏹ اتوقفت يدويًا بعد ${bulkPages} صفحة. ` + bulkSummary(), bulkResults.error > 0);
+        bulkResume = { available: true, cursor: bulkCursor };
+        finishBulkSync(`⏹ اتوقفت يدويًا بعد ${bulkPages} صفحة. ` + bulkSummary(), bulkResults.error > 0, { resumable: true });
         return;
       }
       const params = bulkCursor ? { cursor: bulkCursor } : {};
       const res = await apiGet('bulk_sync_all', params);
+
+      // نتايج الصفحة — من الـ Worker، مش مستنتجة من غياب الخطأ.
+      // اللي اتعالج قبل الـ429 جوّه الصفحة حقيقي ومتحسوب.
+      if (res.results) {
+        for (const k of Object.keys(bulkResults)) bulkResults[k] += res.results[k] || 0;
+      }
+
+      if (res.rateLimited) {
+        // 🔴 429 = سقف الاستضافة، مش فشل: الـ Worker وقف الدورة ورجّع الحجوزات،
+        //    و nextCursor = نفس cursor الصفحة دي. بنستنى ونعيد **نفس الصفحة** بالظبط.
+        //    scanned/linked/pages مابتتحسبش — الصفحة هتتعاد وتتحسب مرة واحدة.
+        bulkDeferred = res.deferred || 0;
+        bulkCursor = res.nextCursor || null;
+        updateBulkStats();
+        if (rlStreak >= BULK_BACKOFF_SEC.length) {
+          bulkResume = { available: true, cursor: bulkCursor };
+          finishBulkSync(`⏸ اتوقفت عند الصفحة ${bulkPages + 1} — ووردبريس لسه رافض (سقف الاستضافة) بعد ${BULK_BACKOFF_SEC.length} محاولات. `
+            + `مفيش فشل: ${bulkDeferred.toLocaleString('en-US')} variant مؤجّلين، وتقدر تكمّل من نفس النقطة بعد دقيقتين. ` + bulkSummary(), false, { resumable: true, paused: true });
+          return;
+        }
+        const waitSec = Math.max(Number(res.retryAfterSec) || 0, BULK_BACKOFF_SEC[rlStreak]);
+        rlStreak++; bulkWaits++;
+        const ok = await bulkCountdown(waitSec, `⏳ ووردبريس رفض مؤقتًا (سقف الاستضافة) — محاولة ${rlStreak} من ${BULK_BACKOFF_SEC.length}`);
+        if (!ok) continue;   // الإيقاف اتطلب — أول الحلقة بتتصرف
+        continue;
+      }
+
+      rlStreak = 0;
+      bulkDeferred = 0;
       bulkPages++;
       bulkScanned += res.scanned || 0;
       bulkLinked  += res.linked  || 0;
       bulkCursor  = res.nextCursor || null;
-      // نتايج الصفحة — من الـ Worker، مش مستنتجة من غياب الخطأ
-      if (res.results) {
-        for (const k of Object.keys(bulkResults)) bulkResults[k] += res.results[k] || 0;
-      }
       updateBulkStats();
       document.getElementById('bulkLogLine').textContent =
         `صفحة ${bulkPages}: اتفحص ${res.scanned} variant، منهم ${res.linked} مربوط بـ WooCommerce.`;
 
       if (!res.hasMore) { finishBulkSync(bulkSummary(), bulkResults.error > 0); return; }
-      await new Promise(r => setTimeout(r, 300)); // مهلة بسيطة بين الصفحات — رفق بـ WooCommerce
+      await new Promise(r => setTimeout(r, BULK_PAGE_GAP_MS)); // فاصل بين الصفحات — النافذة مشتركة مع باقي الـ Workers
     }
   } catch (e) {
-    // ⚠️ الرسالة بتقول إن اللي اتعمل **اتعمل فعلاً** — مش «العملية فشلت»
+    // ⚠️ الرسالة بتقول إن اللي اتعمل **اتعمل فعلاً** — مش «العملية فشلت».
+    // الاستئناف متاح من نفس الـ cursor (الصفحة اللي فشلت هتتعاد، والمطابق بيرجع already).
+    bulkResume = { available: true, cursor: bulkCursor };
     finishBulkSync(`⚠️ توقفت بسبب خطأ: ${e.message} — اللي اتزامن قبل التوقف اتزامن فعلاً. `
-      + bulkSummary() + ' الإعادة بتبدأ من أول الكتالوج (الفهرسة مش محفوظة).', true);
+      + bulkSummary() + ' تقدر تكمّل من آخر نقطة.', true, { resumable: true });
   }
 }
 
@@ -2190,6 +2283,7 @@ function updateBulkStats() {
   document.getElementById('bulkResAlready').textContent  = bulkResults.already.toLocaleString('en-US');
   document.getElementById('bulkResRejected').textContent = bulkResults.rejected.toLocaleString('en-US');
   document.getElementById('bulkResError').textContent    = (bulkResults.error + bulkResults.warning).toLocaleString('en-US');
+  document.getElementById('bulkResDeferred').textContent = bulkDeferred.toLocaleString('en-US');
 }
 
 // ملخّص بيقول **إيه اللي حصل فعلاً** — مش «خلصت» وبس
@@ -2199,20 +2293,27 @@ function bulkSummary() {
   let msg = `اتفحص ${n(bulkScanned)} variant على ${n(bulkPages)} صفحة، منهم ${n(bulkLinked)} مربوط بـ WooCommerce.`;
   msg += ` النتيجة: تم ${n(r.success)} ✅ · متعمل خلاص ${n(r.already)} ℹ️ · مرفوض ${n(r.rejected)} ➖`;
   if (r.warning) msg += ` · تم جزئيًا ${n(r.warning)} ⚠`;
-  msg += ` · فشل ${n(r.error)} ✗.`;
+  msg += ` · فشل ${n(r.error)} ✗`;
+  // ⏳ المؤجّل بسبب 429 **مش فشل** — بيتعدّ لوحده، وبيتحسب مؤجّل فقط لو لسه ما اتكمّلش
+  if (bulkDeferred) msg += ` · مؤجّل (سقف الاستضافة) ${n(bulkDeferred)} ⏳`;
+  msg += '.';
+  if (bulkWaits) msg += ` استنت تلقائيًا ${n(bulkWaits)} مرة بسبب سقف الاستضافة.`;
   if (r.error || r.rejected) msg += ' راجع تاب السجل للتفاصيل سطر بسطر.';
   return msg;
 }
 
-function finishBulkSync(msg, isError) {
+function finishBulkSync(msg, isError, opts = {}) {
   bulkRunning = false;
   setUpdateLock(false);
+  document.getElementById('bulkResumeBtn').style.display = (opts.resumable && bulkResume.available) ? '' : 'none';
   document.getElementById('bulkSyncRunning').style.display = 'none';
   document.getElementById('bulkSyncDone').style.display = 'block';
   const doneMsg = document.getElementById('bulkDoneMsg');
   doneMsg.textContent = msg;
   doneMsg.style.color = isError ? 'var(--red)' : 'var(--green)';
-  if (isError) {
+  if (opts.paused) {
+    showToast('المزامنة اتوقفت مؤقتًا بسبب سقف الاستضافة — كمّل من آخر نقطة بعد دقيقتين', 'warning', 8000);
+  } else if (isError) {
     showToast(`المزامنة خلصت وفيها ${bulkResults.error.toLocaleString('en-US')} فشل — راجع السجل`, 'error', 7000);
     playBeep('error');
   } else if (bulkResults.warning) {
@@ -2225,6 +2326,7 @@ function finishBulkSync(msg, isError) {
 }
 
 function resetBulkSync() {
+  bulkResume = { available: false, cursor: null };
   document.getElementById('bulkSyncDone').style.display = 'none';
   document.getElementById('bulkSyncIdle').style.display = 'block';
 }
@@ -2274,6 +2376,7 @@ const LOG_TYPE_META = {
   empty_payload_bug:       { cls:'log-type-bad',  label:'❌ payload فاضي' },
   hmac_failed:             { cls:'log-type-bad',  label:'🔒 فشل HMAC' },
   unexpected_error:        { cls:'log-type-bad',  label:'❌ خطأ غير متوقع' },
+  rate_limited:            { cls:'log-type-warn', label:'⏳ مؤجّل — سقف الاستضافة' },
 };
 
 // ─── §LOG-JS::results — مفردات extra.result (constants §12) ───
