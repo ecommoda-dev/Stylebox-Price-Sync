@@ -1,5 +1,5 @@
-// EcomModa — Stylebox Price Sync (v1.3.0)
-// skills: worker-builder v4.0.0 · constants v6.0.0 · shopify-graphql-helper v3.0.1 · woocommerce-sync-helper v2.1.0 — 18-11-2026
+// EcomModa — Stylebox Price Sync (v1.4.0)
+// skills: worker-builder v4.2.0 · constants v6.0.1 · shopify-graphql-helper v3.2.0 · woocommerce-sync-helper v2.2.0 — 19-11-2026
 
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
@@ -9,7 +9,7 @@ const TOOL_NAME = 'stylebox_price_sync';
 
 // بيرجع من ?action=get_config — الواجهة بتقارنه بـ MIN_WORKER_VERSION عندها،
 // فـ Promote ناقص أو rollback بيبان بدل ما يفضل صامت.
-const WORKER_VERSION = '1.3.0';
+const WORKER_VERSION = '1.4.0';
 
 // ⚠️ TEMPORARY — bulk_sync_all (أضيفت [تاريخ اليوم]) لمرة واحدة/دورية لعمل
 // سحب شامل على كل الـ variants في شوبيفاي بدل ما ننتظر الويبهوك واحد واحد.
@@ -27,6 +27,15 @@ const WORKER_VERSION = '1.3.0';
 //                 الفعلي هنا **وقت WooCommerce**، مش تكلفة شوبيفاي.
 //                 التكلفة الحقيقية بترجع في diag من throttleStatus.
 const BULK_SYNC_PAGE_SIZE = 40;
+
+// ─── سقف الـ 429 — ميزانية النداءات (woocommerce-sync-helper Step 3.5) ───
+// نافذة متحركة ≈ ٣٠ نداء / ٣٠–٦٠ ث على stylebox.online، **مشتركة بين كل الـ Workers**.
+// قبل v1.4.0: نداءين لكل variant (GET ثم POST) = ٨٠ نداء لصفحة bulk. دلوقتي نداء
+// واحد لكل دفعة (التحقق SKU/GTIN بيحصل على سيرفر ووردبريس): ٤٠ variant = ٢ نداء.
+// مصدر الأرقام: لوجز كلاودفلير 19-11-2026 (66 variant فشلوا بـ WP GET 429 جسم فاضي).
+const WP_BATCH_SIZE   = 20;    // عدد الـ items في النداء الواحد (حد السيرفر الأقصى ٥٠)
+const WP_BATCH_GAP_MS = 1500;  // فاصل بين دفعتين متتاليتين — متوازي ممنوع (الموقع بيرجّع 500)
+const RATE_LIMIT_DEFAULT_RETRY_SEC = 120;  // لو Retry-After غايب: النافذة بتفضى بعد ~١٫٥–٢ دقيقة سكون
 
 // ══════════════════════════════════════════════════════
 // §CORS — Option B (write tool, strict allowlist)
@@ -300,7 +309,7 @@ const LOG_REGISTRY = {
     'empty_payload_bug', 'invalid_variant', 'not_linked_yet',
     'stale_event_skipped', 'no_triggered_at_header', 'invalid_price',
     'no_price_change_skipped', 'wp_variation_not_found', 'sku_mismatch',
-    'gtin_mismatch', 'synced', 'wp_update_failed',
+    'gtin_mismatch', 'synced', 'wp_update_failed', 'rate_limited',
   ]),
 };
 
@@ -502,37 +511,48 @@ function logParamsFrom(url, tool) {
 
 // ══════════════════════════════════════════════════════
 // §WOOCOMMERCE
-// ✅ الـ endpoint (variation-price) **موجود وشغّال على WordPress** — اتأكد من
-// صفوف D1 حية (type='synced' · extra.wcResult.success:true). التعليق القديم
-// هنا كان بيقول إنه "لسه مش موجود" وكان فات أوانه، واتسيّب وقت النقل لـ git
-// عن قصد (نقل بايت ببايت) — اتصحّح في جردة 12-09-2026 لأنه بقى مصيدة لأي حد
-// يفتح الملف.
-// الشكل: GET بيرجع regular_price + sale_price + sku + gtin · POST بياخد
-// regular_price + sale_price ويحدّثهم. الهيدر X-Sync-Header-Secret (مش
-// X-EcomModa-Secret القياسي — سلوك قائم متعمّد، راجع CLAUDE.md).
+// endpoint الدفعات: POST /wp-json/ecommoda/v1/variation-prices (v1.4.0)
+//   body: { items: [{ variation_id, expected_sku, expected_gtin, regular_price, sale_price }] }
+//   السيرفر بيعمل triple-check (SKU + GTIN) ويقارن ويكتب، ويرجّع نتيجة لكل item
+//   **بنفس ترتيب المدخلات** (+ حقل index): updated | unchanged | sku_mismatch |
+//   gtin_mismatch | not_found | bad_request | save_failed. الفشل الجزئي = HTTP 200.
+// الـ routes القديمة (GET/POST variation-price/{id}) لسه موجودة على الموقع للتوافق
+// ومابتتنادّاش من الـ Worker ده (diag بس بيعمل probe عليها).
+// الهيدر X-Sync-Header-Secret (مش X-EcomModa-Secret القياسي — سلوك قائم، CLAUDE.md).
 // ══════════════════════════════════════════════════════
-async function wcGetVariationPrice(env, variationId) {
-  const res = await fetch(
-    `${env.WP_BASE_URL.replace(/\/$/, '')}/wp-json/ecommoda/v1/variation-price/${variationId}`,
-    { headers: { 'X-Sync-Header-Secret': env.SYNC_SECRET } }
-  );
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`WP GET failed: ${res.status} ${await res.text()}`);
-  return res.json();
+class RateLimitError extends Error {
+  constructor(retryAfterSec) {
+    super('WP rate-limited (429)');
+    this.name = 'RateLimitError';
+    this.retryAfterSec = retryAfterSec;   // null لو Retry-After غايب
+  }
 }
 
-async function wcUpdateVariationPrice(env, variationId, regularPrice, salePrice) {
+async function wcBatchUpdatePrices(env, items) {
   const res = await fetch(
-    `${env.WP_BASE_URL.replace(/\/$/, '')}/wp-json/ecommoda/v1/variation-price/${variationId}`,
+    `${String(env.WP_BASE_URL).replace(/\/$/, '')}/wp-json/ecommoda/v1/variation-prices`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Sync-Header-Secret': env.SYNC_SECRET },
-      body: JSON.stringify({ regular_price: regularPrice, sale_price: salePrice }),
+      body: JSON.stringify({ items }),
     }
   );
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`WP POST failed: ${res.status} ${JSON.stringify(body)}`);
-  return body;
+  const text = await res.text();
+  if (res.status === 429) {
+    // 429 بجسم **فاضي** = سقف الاستضافة (اتقفل قبل ما PHP يشتغل) → circuit breaker.
+    // 429 بجسم JSON = حاجة تانية (بلجن/ووكومرس) → خطأ عادي، مش rate limit.
+    if (!text.trim()) {
+      const ra = parseInt(res.headers.get('Retry-After') || '', 10);
+      throw new RateLimitError(Number.isFinite(ra) ? ra : null);
+    }
+    throw new Error(`WP batch failed: 429 ${text.slice(0, 300)}`);
+  }
+  if (!res.ok) throw new Error(`WP batch failed: ${res.status} ${text.slice(0, 300)}`);
+  let body;
+  try { body = JSON.parse(text); }
+  catch { throw new Error(`WP batch: رد مش JSON — ${text.slice(0, 200)}`); }
+  if (!body || !Array.isArray(body.results)) throw new Error('WP batch: الرد من غير results[]');
+  return body;   // { success, summary, results[] }
 }
 
 // ══════════════════════════════════════════════════════
@@ -708,7 +728,7 @@ export default {
 
       // ─── §BULK-SYNC ─────────────────────────────────────────
       // صفحة واحدة لكل نداء — الـ HTML بينده تاني بالـ cursor الراجع
-      // لحد ما hasMore: false. مبني فوق processVariant() نفسها اللي
+      // لحد ما hasMore: false. مبني فوق prepareVariant()+flushBatch() نفسهم اللي
       // بيستخدمها الويبهوك — مفيش منطق سعر مكرر.
       if (action === 'bulk_sync_all') {
         const cursor = url.searchParams.get('cursor') || null;
@@ -788,6 +808,22 @@ export default {
           else if (res.status === 401 || res.status === 403) add(false, 'WooCommerce endpoint', `${res.status} — SYNC_SECRET مرفوض من WordPress`);
           else add(true, 'WooCommerce endpoint', `HTTP ${res.status} (المتوقع 404 على variation وهمي)`);
         } catch (e) { add(false, 'WooCommerce endpoint', `تعذّر الوصول: ${e.message}`); }
+
+        // ⑥ endpoint الدفعات (v1.4.0) — POST بـ items:[] **بدون أي كتابة**.
+        //    400 = الـ route شغّال والسر مقبول · 404 rest_no_route = السنيپت لسه ما اتلصقش ·
+        //    401/403 = السر غلط · 429 = سقف الاستضافة (استنى ~دقيقتين)
+        try {
+          const res = await fetch(`${String(env.WP_BASE_URL || '').replace(/\/$/, '')}/wp-json/ecommoda/v1/variation-prices`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Sync-Header-Secret': env.SYNC_SECRET || '' },
+            body: JSON.stringify({ items: [] }),
+          });
+          if (res.status === 400) add(true, 'WooCommerce batch endpoint', '400 على items فاضية = route الدفعات شغّال والسر مقبول');
+          else if (res.status === 404) add(false, 'WooCommerce batch endpoint', '404 — سنيپت الدفعات (variation-prices) لسه ما اتلصقش على WordPress');
+          else if (res.status === 401 || res.status === 403) add(false, 'WooCommerce batch endpoint', `${res.status} — SYNC_SECRET مرفوض من WordPress`);
+          else if (res.status === 429) add(false, 'WooCommerce batch endpoint', '429 — سقف الاستضافة (استنى ~دقيقتين وأعد الفحص)');
+          else add(false, 'WooCommerce batch endpoint', `HTTP ${res.status} (المتوقع 400 على items فاضية)`);
+        } catch (e) { add(false, 'WooCommerce batch endpoint', `تعذّر الوصول: ${e.message}`); }
 
         return json({ ok: checks.every(c => c.ok), checks }, 200, request);
       }
@@ -913,9 +949,14 @@ async function handleShopifyWebhook(request, env, ctx) {
 }
 
 // ── §WEBHOOK::processProductWebhook ──
-// بيلف على كل variant جوه المنتج، ويعمل sync للسعر لو عنده
-// custom.wordpress_variation_id metafield. كل نتيجة (نجاح أو تخطي)
+// بيحضّر **كل** variants المنتج (prepareVariant — صفر نداءات WordPress)، وبعدين
+// بيبعتهم مرة واحدة في flushBatch: نداء واحد بدل 2×N. كل نتيجة (نجاح أو تخطي)
 // بتتسجل في D1 لأن ده الطريقة الوحيدة لمراقبة Worker بلا واجهة.
+//
+// ⚠️ لو WordPress رفض بـ 429 (سقف الاستضافة) التحديث **بيضيع** — شوبيفاي مش
+//    هتعيد بعد الـ 200. التعويض الوحيد: صف rate_limited لكل variant + الحجز
+//    اترجّع، والمزامنة الشاملة بتلحقه. ممنوع setTimeout/retry جوّه waitUntil
+//    (الطابور الدائم = Tier 4، خارج النطاق).
 async function processProductWebhook(env, payload, meta) {
   const { webhookId, eventId, triggeredAt, topic, shopDomain } = meta;
   const diff = getPriceDiff(env);
@@ -931,25 +972,35 @@ async function processProductWebhook(env, payload, meta) {
     return;
   }
 
+  const pending = [];
   for (const variant of payload.variants) {
-    await processVariant(env, variant, { webhookId, eventId, triggeredAt, diff });
+    const prep = await prepareVariant(env, variant, { webhookId, eventId, triggeredAt, diff, force: false });
+    if (prep.pending) pending.push(prep.pending);
   }
+  await flushBatch(env, pending);
 }
 
-// ── §WEBHOOK::processVariant ──
-// ⚠️ الدالة دي مصدر الحقيقة الوحيد لحساب السعر والـ triple-check — بتُستخدم
-// من الويبهوك (شكل REST payload) ومن bulk_sync_all (شكل GraphQL مُعاد تشكيله
-// لنفس البنية جوه runBulkSyncPage تحت). أي تعديل هنا بينطبق على الاتنين.
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── §WEBHOOK::prepareVariant ──
+// ⚠️ مصدر الحقيقة الوحيد لحساب السعر وحراس ما-قبل-WordPress — بتُستخدم من
+// الويبهوك (شكل REST payload) ومن bulk_sync_all (شكل GraphQL مُعاد تشكيله لنفس
+// البنية جوه runBulkSyncPage). أي تعديل هنا بينطبق على الاتنين.
 //
-// 🔴 **بترجّع نتيجة العملية** — واحدة من مفردات extra.result المقفولة
-//    (constants §12): success · warning · error · rejected · already.
-//    الرجوع ده هو اللي بيخلّي bulk_sync_all يعرف يقول للواجهة إيه اللي حصل
-//    فعلاً، بدل ما تعرض «✅ خلصت» على صفحة كل صفوفها فشلت. (Step 5A ④)
+// **صفر نداءات WordPress هنا.** بترجّع واحد من:
+//   { done: 'rejected' | 'already' }  — الصف اتكتب في D1 خلاص
+//   { pending: {...} }                — جاهز للكتابة، ينتظر flushBatch
+// الـ triple-check (SKU + GTIN) بقى على سيرفر ووردبريس جوّه endpoint الدفعات
+// (نفس شروط النسخة القديمة بالحرف: trim + مقارنة نصية، SKU الأول ثم GTIN).
+//
+// ctx.force: bulk بيتخطّى noChangeGuard — الكاش بيخزّن **آخر قيمة زامنّاها** مش
+// القيمة الفعلية على WC، فلو السعر اتغيّر بره الأداة الكاش بيكدّب. الـ endpoint
+// الجديد رخيص وبيرجّع `unchanged` بنفسه لو مطابق فعلًا. الويبهوك يفضل على الكاش.
 //
 // ⚠️ **قاعدة عدم الضياع:** لكل variant صف واحد بالظبط في D1 — مفيش مسار
-//    بيخرج من غير writeLog. (Step 5A ⑭)
-async function processVariant(env, variant, ctx) {
-  const { webhookId, eventId, triggeredAt, diff } = ctx;
+//    بيخرج من غير writeLog (flushBatch بتكمّل الصف للـ pending). (Step 5A ⑭)
+async function prepareVariant(env, variant, ctx) {
+  const { webhookId, eventId, triggeredAt, diff, force } = ctx;
 
   const variantGid = variant.admin_graphql_api_id || '';
   const variantId = variantGid.split('/').pop();
@@ -970,7 +1021,7 @@ async function processVariant(env, variant, ctx) {
       notes: 'variant من غير admin_graphql_api_id — تعذّر تحديد الـ variant ID',
       extra: { result: 'rejected', stage: 'lookup', webhookId, eventId, variant },
     });
-    return 'rejected';
+    return { done: 'rejected' };
   }
 
   // ── §WEBHOOK::linkGuard ──
@@ -981,7 +1032,7 @@ async function processVariant(env, variant, ctx) {
       notes: 'الـ variant ده لسه من غير custom.wordpress_variation_id metafield',
       extra: { result: 'rejected', stage: 'lookup', variantId, webhookId, eventId },
     });
-    return 'rejected';
+    return { done: 'rejected' };
   }
 
   // ── §WEBHOOK::orderingGuard ──
@@ -998,7 +1049,7 @@ async function processVariant(env, variant, ctx) {
         notes: 'الحدث ده أقدم من (أو مساوي لـ) آخر حدث اتعالج لنفس الـ variant — تم التجاهل',
         extra: { result: 'rejected', stage: 'lookup', variantId, webhookId, eventId, triggeredAt },
       });
-      return 'rejected';
+      return { done: 'rejected' };
     }
     claimPrevious = previous;
     claimTaken = true;
@@ -1026,7 +1077,7 @@ async function processVariant(env, variant, ctx) {
       extra: { result: 'rejected', stage: 'lookup', variantId, webhookId, eventId },
     });
     await release();
-    return 'rejected';
+    return { done: 'rejected' };
   }
 
   const compareRaw = variant.compare_at_price;
@@ -1044,101 +1095,192 @@ async function processVariant(env, variant, ctx) {
     salePrice = '';
   }
 
-  // ── §WEBHOOK::noChangeGuard ── (تجنّب نداء WordPress من غير داعي)
+  // ── §WEBHOOK::noChangeGuard ── (تجنّب نداء WordPress من غير داعي — الويبهوك بس)
   // 🔴 دي result='already' مش رفض ومش فشل: الحالة المستهدفة موجودة أصلاً
   //    ومفيش حاجة كانت مطلوبة. وهي **أكتر نوع صف في سجل الأداة دي**، فلو
   //    اتحسبت فشل أو تحذير، أكتر رسالة بتظهر تبقى أقلها إفادة. (constants §12)
-  const lastSynced = await getLastSyncedPrice(env.DB, variantId);
-  if (
-    lastSynced &&
-    lastSynced.last_synced_regular_price === regularPrice &&
-    (lastSynced.last_synced_sale_price || '') === (salePrice || '')
-  ) {
-    await log({
-      type: 'no_price_change_skipped',
-      notes: 'السعر المحسوب مطابق لآخر قيمة اتزامنت — لا داعي لنداء WordPress',
-      extra: { result: 'already', stage: 'lookup', variantId, webhookId, eventId, regularPrice, salePrice },
-    });
-    return 'already';
+  if (!force) {
+    const lastSynced = await getLastSyncedPrice(env.DB, variantId);
+    if (
+      lastSynced &&
+      lastSynced.last_synced_regular_price === regularPrice &&
+      (lastSynced.last_synced_sale_price || '') === (salePrice || '')
+    ) {
+      await log({
+        type: 'no_price_change_skipped',
+        notes: 'السعر المحسوب مطابق لآخر قيمة اتزامنت — لا داعي لنداء WordPress',
+        extra: { result: 'already', stage: 'lookup', variantId, webhookId, eventId, regularPrice, salePrice },
+      });
+      return { done: 'already' };
+    }
   }
 
-  try {
-    // متغيّر ناقص يوقف العملية باسمه، قبل أي نداء على WordPress (Step 5A ⑧)
-    assertEnv(env, 'woo');
+  return {
+    pending: {
+      variantId, sku, wordpressVariationId, regularPrice, salePrice,
+      shopifyPrice, shopifyCompare, diff, webhookId, eventId,
+      log, release, wasLogged: () => logged,
+    },
+  };
+}
 
-    // ── §WEBHOOK::fetchWpVariation ──
-    const wp = await wcGetVariationPrice(env, wordpressVariationId);
-    if (!wp) {
-      await log({
-        type: 'wp_variation_not_found',
-        notes: `WordPress Variation Id (${wordpressVariationId}) مش موجود على WordPress`,
-        extra: { result: 'rejected', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
+// ── §WEBHOOK::flushBatch ──
+// بيبعت الـ pending على دفعات WP_BATCH_SIZE **متتالية** (فاصل WP_BATCH_GAP_MS —
+// متوازي ممنوع) ويكمّل صف D1 لكل variant. بيرجّع:
+//   { outcomes[] (بنفس ترتيب pendingList: success|warning|error|rejected|already|deferred),
+//     rateLimited, retryAfterSec }
+// 🔴 **circuit breaker:** أول 429 بجسم فاضي يوقف الدورة — كل اللي لسه ما اتبعتش
+//    (الدفعة الحالية + الباقي) ← releaseClaim + صف rate_limited لكل variant، outcome
+//    'deferred'، ومفيش إعادة محاولة جوّه نفس الاستدعاء (كل نداء زيادة = 429 زيادة).
+async function flushBatch(env, pendingList) {
+  const n = pendingList.length;
+  const outcomes = new Array(n).fill(null);
+  if (n === 0) return { outcomes, rateLimited: false, retryAfterSec: null };
+
+  const failUnexpected = async (p, message) => {
+    await p.log({
+      type: 'unexpected_error',
+      notes: message,
+      extra: { result: 'error', stage: 'write', variantId: p.variantId, wordpressVariationId: p.wordpressVariationId, webhookId: p.webhookId, eventId: p.eventId },
+    });
+    await p.release();
+    return 'error';
+  };
+
+  // متغيّر ناقص يوقف العملية باسمه، مرة واحدة قبل أول دفعة (Step 5A ⑧)
+  try { assertEnv(env, 'woo'); }
+  catch (e) {
+    for (let i = 0; i < n; i++) outcomes[i] = await failUnexpected(pendingList[i], e.message || String(e));
+    return { outcomes, rateLimited: false, retryAfterSec: null };
+  }
+
+  for (let start = 0; start < n; start += WP_BATCH_SIZE) {
+    const end = Math.min(start + WP_BATCH_SIZE, n);
+    if (start > 0) await sleep(WP_BATCH_GAP_MS);
+
+    const items = [];
+    for (let i = start; i < end; i++) {
+      const p = pendingList[i];
+      items.push({
+        variation_id:  Number(p.wordpressVariationId),
+        expected_sku:  String(p.sku || ''),
+        expected_gtin: String(p.variantId),     // GTIN على ووردبريس = Shopify variant numeric ID
+        regular_price: p.regularPrice,
+        sale_price:    p.salePrice || '',
       });
-      await release();
-      return 'rejected';
     }
 
-    // ── §WEBHOOK::tripleCheck ── (SKU + GTIN — نفس منطق stock-sync)
-    const skuMatch = String(sku || '').trim() === String(wp.sku || '').trim();
-    const gtinMatch = String(wp.gtin || '').trim() === String(variantId || '').trim();
-
-    if (!skuMatch) {
-      await log({
-        type: 'sku_mismatch',
-        notes: `SKU مختلف — Shopify: "${sku}" | WordPress: "${wp.sku}"`,
-        extra: { result: 'rejected', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
-      });
-      await release();
-      return 'rejected';
-    }
-    if (!gtinMatch) {
-      await log({
-        type: 'gtin_mismatch',
-        notes: `GTIN لا يطابق Variant ID — WordPress GTIN: "${wp.gtin}" | متوقع: "${variantId}"`,
-        extra: { result: 'rejected', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
-      });
-      await release();
-      return 'rejected';
-    }
-
-    // ── §WEBHOOK::syncPrice ──
+    let body;
     try {
-      const result = await wcUpdateVariationPrice(env, wordpressVariationId, regularPrice, salePrice);
-      await updateLastSyncedPrice(env.DB, variantId, regularPrice, salePrice);
-      await log({
+      body = await wcBatchUpdatePrices(env, items);
+    } catch (e) {
+      if (e instanceof RateLimitError) {
+        for (let i = start; i < n; i++) {
+          const p = pendingList[i];
+          await p.log({
+            type: 'rate_limited',
+            notes: 'WordPress رفض بسبب سقف الاستضافة (429) — اتوقفت الدورة والحجز اترجّع',
+            extra: { result: 'warning', stage: 'write', variantId: p.variantId, wordpressVariationId: p.wordpressVariationId, webhookId: p.webhookId, eventId: p.eventId, retryAfterSec: e.retryAfterSec },
+          });
+          await p.release();
+          outcomes[i] = 'deferred';
+        }
+        return { outcomes, rateLimited: true, retryAfterSec: e.retryAfterSec };
+      }
+      // أي خطأ تاني على الدفعة كلها: unexpected_error + إرجاع الحجز، وكمّل للدفعة اللي بعدها
+      for (let i = start; i < end; i++) outcomes[i] = await failUnexpected(pendingList[i], `فشل نداء الدفعة: ${e.message || e}`);
+      continue;
+    }
+
+    for (let i = start; i < end; i++) {
+      const p = pendingList[i];
+      const item = body.results[i - start];
+      try {
+        if (!item || Number(item.variation_id) !== Number(p.wordpressVariationId)) {
+          outcomes[i] = await failUnexpected(p, 'رد الدفعة مش مطابق للمدخلات (results ناقصة أو بترتيب مختلف)');
+        } else {
+          outcomes[i] = await applyBatchResult(env, p, item);
+        }
+      } catch (e) {
+        outcomes[i] = await failUnexpected(p, e.message || String(e));
+      }
+    }
+  }
+  return { outcomes, rateLimited: false, retryAfterSec: null };
+}
+
+// ── §WEBHOOK::applyBatchResult ── نتيجة item واحد من السيرفر → صف D1 + الكاش
+// بيرجّع واحدة من مفردات extra.result المقفولة (constants §12).
+async function applyBatchResult(env, p, item) {
+  const base = { variantId: p.variantId, wordpressVariationId: p.wordpressVariationId, webhookId: p.webhookId, eventId: p.eventId };
+  const before = `regular:${item.old_regular_price ?? item.regular_price ?? '-'} / sale:${(item.old_sale_price ?? item.sale_price) || '-'}`;
+  const after  = `regular:${p.regularPrice} / sale:${p.salePrice || '-'}`;
+  // ⚠️ مفتاح type بيتكتب **صريح** في كل مكان (مفيش shorthand — worker-builder Step 7)
+  const rejectDone = async () => { await p.release(); return 'rejected'; };
+
+  switch (item.status) {
+    case 'updated':
+      await updateLastSyncedPrice(env.DB, p.variantId, p.regularPrice, p.salePrice);
+      await p.log({
         type: 'synced',
-        valueBefore: `regular:${wp.regular_price} / sale:${wp.sale_price || '-'}`,
-        valueAfter: `regular:${regularPrice} / sale:${salePrice || '-'}`,
+        valueBefore: before,
+        valueAfter: after,
         notes: 'تمّت مزامنة السعر بنجاح',
         extra: {
-          result: 'success', stage: 'write',
-          variantId, wordpressVariationId, webhookId, eventId,
-          shopifyPrice, shopifyCompare, priceDifference: diff, wcResult: result,
+          result: 'success', stage: 'write', ...base,
+          shopifyPrice: p.shopifyPrice, shopifyCompare: p.shopifyCompare, priceDifference: p.diff, wcResult: item,
         },
       });
       // الكتابة تمّت بس السجل فشل — الواجهة لازم تعرف الفرق
-      return logged ? 'success' : 'warning';
-    } catch (wpErr) {
-      // 🔴 error مش rejected: النداء **وصل** لـ WooCommerce واترفض (constants §12)
-      await log({
-        type: 'wp_update_failed',
-        valueBefore: `regular:${wp.regular_price} / sale:${wp.sale_price || '-'}`,
-        valueAfter: `regular:${regularPrice} / sale:${salePrice || '-'}`,
-        notes: `فشل تحديث WordPress: ${wpErr.message}`,
-        extra: { result: 'error', stage: 'write', variantId, wordpressVariationId, webhookId, eventId },
-      });
-      await release();
-      return 'error';
-    }
+      return p.wasLogged() ? 'success' : 'warning';
 
-  } catch (e) {
-    await log({
-      type: 'unexpected_error',
-      notes: e.message || String(e),
-      extra: { result: 'error', stage: 'lookup', variantId, wordpressVariationId, webhookId, eventId },
-    });
-    await release();
-    return 'error';
+    case 'unchanged':
+      // الحالة مطابقة فعلًا على WooCommerce — الكاش بيتحدّث (ده بيصلّح كاش كان بيكدّب)
+      await updateLastSyncedPrice(env.DB, p.variantId, p.regularPrice, p.salePrice);
+      await p.log({
+        type: 'no_price_change_skipped',
+        notes: 'السعر على WooCommerce مطابق فعلًا للمحسوب — السيرفر ماكتبش حاجة',
+        extra: { result: 'already', stage: 'write', ...base, regularPrice: p.regularPrice, salePrice: p.salePrice },
+      });
+      return 'already';
+
+    case 'sku_mismatch':
+      await p.log({
+        type: 'sku_mismatch',
+        notes: `SKU مختلف — Shopify: "${p.sku}" | ${item.message || 'WordPress'}`,
+        extra: { result: 'rejected', stage: 'lookup', ...base },
+      });
+      return rejectDone();
+    case 'gtin_mismatch':
+      await p.log({
+        type: 'gtin_mismatch',
+        notes: `GTIN لا يطابق Variant ID (متوقع: "${p.variantId}") — ${item.message || ''}`,
+        extra: { result: 'rejected', stage: 'lookup', ...base },
+      });
+      return rejectDone();
+    case 'not_found':
+      await p.log({
+        type: 'wp_variation_not_found',
+        notes: `WordPress Variation Id (${p.wordpressVariationId}) مش موجود على WordPress`,
+        extra: { result: 'rejected', stage: 'lookup', ...base },
+      });
+      return rejectDone();
+
+    case 'bad_request':
+    case 'save_failed':
+      // 🔴 error مش rejected: النداء **وصل** لـ WooCommerce واترفض/فشل (constants §12)
+      await p.log({
+        type: 'wp_update_failed',
+        valueBefore: before,
+        valueAfter: after,
+        notes: `فشل تحديث WordPress (${item.status}): ${item.message || ''}`,
+        extra: { result: 'error', stage: 'write', ...base, wpStatus: item.status },
+      });
+      await p.release();
+      return 'error';
+
+    default:
+      throw new Error(`status غير معروف من السيرفر: "${item.status}"`);
   }
 }
 
@@ -1146,8 +1288,13 @@ async function processVariant(env, variant, ctx) {
 // §BULK-SYNC — runBulkSyncPage
 // صفحة واحدة (BULK_SYNC_PAGE_SIZE variant) من كل الكتالوج — مش بس المربوطين.
 // بيقرا metafield custom.wordpress_variation_id مباشرة مع الصفحة (نداء واحد،
-// مفيش N+1)، وبيعيد تشكيل كل variant لنفس بنية الويبهوك عشان processVariant()
-// تشتغل من غير أي تكرار في منطق السعر.
+// مفيش N+1)، وبيعيد تشكيل كل variant لنفس بنية الويبهوك عشان prepareVariant()
+// تشتغل من غير أي تكرار في منطق السعر. بعدين flushBatch مرة واحدة للصفحة كلها
+// (٤٠ variant = دفعتين = نداءين لووردبريس بدل ٨٠).
+//
+// ⚠️ لو WordPress رفض بـ 429: `rateLimited: true` + `nextCursor` = **نفس cursor
+//    الصفحة دي** (الواجهة بتعيدها بالظبط) + `retryAfterSec`. اللي اتعالج قبل الـ429
+//    متحسوب في results، واللي لسه في `deferred` (مش error).
 // ══════════════════════════════════════════════════════
 async function runBulkSyncPage(env, cursor) {
   assertEnv(env, 'shopify');           // متغيّر ناقص يوقف العملية باسمه
@@ -1186,7 +1333,9 @@ async function runBulkSyncPage(env, cursor) {
   // 🔴 عدّادات النتايج — من غيرها الواجهة بتعرض «✅ خلصت» حتى لو كل الصفوف
   //    فشلت. المفردات مقفولة (constants §12). (Step 5A ④ · html-builder 3C)
   const results = { success: 0, warning: 0, error: 0, rejected: 0, already: 0 };
+  let deferred = 0;   // اتأجّلت بسبب 429 — مش error، ومش من مفردات result
 
+  const pending = [];
   for (const edge of conn.edges) {
     scanned++;
     const node = edge.node;
@@ -1205,24 +1354,39 @@ async function runBulkSyncPage(env, cursor) {
       metafields: [{ namespace: 'custom', key: 'wordpress_variation_id', value: wordpressVariationId }],
     };
 
-    const r = await processVariant(env, shaped, {
+    // force: الشاملة بتتخطّى كاش «آخر قيمة زامنّاها» (يكدّب لو WC اتغيّر بره الأداة)
+    const prep = await prepareVariant(env, shaped, {
       webhookId: batchTag,
       eventId: batchTag,
       triggeredAt,
       diff,
+      force: true,
     });
-    if (r && results[r] !== undefined) results[r]++;
+    if (prep.done) results[prep.done]++;
+    else pending.push(prep.pending);
   }
 
+  const flushed = await flushBatch(env, pending);
+  for (const o of flushed.outcomes) {
+    if (o === 'deferred') deferred++;
+    else if (o && results[o] !== undefined) results[o]++;
+  }
+
+  const rateLimited = flushed.rateLimited;
   return {
     scanned,
     linked,
     results,
+    deferred,
+    rateLimited,
+    retryAfterSec: rateLimited ? (flushed.retryAfterSec ?? RATE_LIMIT_DEFAULT_RETRY_SEC) : null,
     // تكلفة الاستعلام معروضة — الاقتراب من سقف النقط مابيبانش غير بانفجار
     // دفعة كاملة (Step 5A ⑪ ④)
     throttleStatus: data?.extensions?.cost?.throttleStatus || null,
     queryCost,   // ⑮ تفصيل لكل استعلام (للقياس بس)
-    hasMore: conn.pageInfo.hasNextPage,
-    nextCursor: conn.pageInfo.endCursor,
+    // لو rateLimited: نفس cursor الصفحة دي (مش اللي بعدها) والواجهة تعيدها بعد الانتظار
+    hasMore: rateLimited ? true : conn.pageInfo.hasNextPage,
+    nextCursor: rateLimited ? (cursor || null) : conn.pageInfo.endCursor,
+    done: !rateLimited && !conn.pageInfo.hasNextPage,
   };
 }
