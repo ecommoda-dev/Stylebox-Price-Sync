@@ -2,7 +2,7 @@
 
 # Stylebox Price Sync
 
-![version](https://img.shields.io/badge/version-v1.2.0-blue)
+![version](https://img.shields.io/badge/version-v1.3.0-blue)
 
 مزامنة أسعار المنتجات بين Shopify وWooCommerce (stylebox.online) —
 ويبهوك تلقائي + مزامنة شاملة يدوية. تفاصيل كاملة في `CLAUDE.md`.
@@ -19,6 +19,6 @@
 | `wrangler.toml` | إعدادات النشر + الـ `[vars]` |
 | `CLAUDE.md` | المرجع الكامل: الـ endpoints · D1 · الفخاخ · بصمة المهارات |
 
-آخر تحديث: 12-09-2026 — 14:10
+آخر تحديث: 18-11-2026 — 23:51
 
 </div>

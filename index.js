@@ -1,5 +1,5 @@
-// EcomModa — Stylebox Price Sync (v1.2.1)
-// skills: worker-builder v3.7.0 · constants v3.1.0 — 24-09-2026
+// EcomModa — Stylebox Price Sync (v1.3.0)
+// skills: worker-builder v4.0.0 · constants v6.0.0 · shopify-graphql-helper v3.0.1 · woocommerce-sync-helper v2.1.0 — 18-11-2026
 
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
@@ -9,7 +9,7 @@ const TOOL_NAME = 'stylebox_price_sync';
 
 // بيرجع من ?action=get_config — الواجهة بتقارنه بـ MIN_WORKER_VERSION عندها،
 // فـ Promote ناقص أو rollback بيبان بدل ما يفضل صامت.
-const WORKER_VERSION = '1.2.1';
+const WORKER_VERSION = '1.3.0';
 
 // ⚠️ TEMPORARY — bulk_sync_all (أضيفت [تاريخ اليوم]) لمرة واحدة/دورية لعمل
 // سحب شامل على كل الـ variants في شوبيفاي بدل ما ننتظر الويبهوك واحد واحد.
@@ -151,23 +151,43 @@ function getPriceDiff(env) {
 // ⚠️ يحتاج env.CLIENT_ID + env.SHOP_DOMAIN مضافين في Dashboard Variables —
 // env.CLIENT_SECRET موجود بالفعل (مستخدم في التحقق من HMAC فوق).
 // ══════════════════════════════════════════════════════
+// §SHOPIFY::getAccessToken — التوكن والـ throttle bucket مشتركين بين كل Workers الستاك
+// (نفس الـ Custom App)، فالفشل العابر لازم يتعافى بدل ما يتحوّل لفشل كامل
+// (worker-builder Step 5A ⑯ ②). الاسم OAUTH_MAX_ATTEMPTS مقصود — وصفة الجرد بتدوّر عليه.
+const OAUTH_MAX_ATTEMPTS = 3;
+
 async function getAccessToken(env) {
-  const resp = await fetch(
-    `https://${env.SHOP_DOMAIN}/admin/oauth/access_token`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: env.CLIENT_ID,
-        client_secret: env.CLIENT_SECRET,
-        grant_type: 'client_credentials',
-      }),
+  let lastErr = null;
+  for (let attempt = 1; attempt <= OAUTH_MAX_ATTEMPTS; attempt++) {
+    try {
+      const resp = await fetch(
+        `https://${env.SHOP_DOMAIN}/admin/oauth/access_token`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: env.CLIENT_ID,
+            client_secret: env.CLIENT_SECRET,
+            grant_type: 'client_credentials',
+          }),
+        }
+      );
+      if (!resp.ok) {
+        const retriable = resp.status === 429 || resp.status >= 500;
+        lastErr = new Error(`OAuth failed: ${resp.status}`);
+        if (retriable && attempt < OAUTH_MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 700 * attempt)); continue; }
+        throw lastErr;
+      }
+      const data = await resp.json();
+      if (!data.access_token) throw new Error('No access_token in response');
+      return data.access_token;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < OAUTH_MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 400 * attempt)); continue; }
+      throw lastErr;
     }
-  );
-  if (!resp.ok) throw new Error(`OAuth failed: ${resp.status}`);
-  const data = await resp.json();
-  if (!data.access_token) throw new Error('No access_token in response');
-  return data.access_token;
+  }
+  throw lastErr || new Error('OAuth: unknown failure');
 }
 
 // 🔴 النسخة المعتمدة (worker-builder Step 5A ①) — بترمي على: فشل شبكة ·
@@ -175,14 +195,19 @@ async function getAccessToken(env) {
 //    THROTTLED. النسخة القديمة كانت `return resp.json()` وبس، يعني 401/429/5xx
 //    من شوبيفاي كانت بتعدّي كأنها رد سليم وأي throttle بيقتل صفحة كاملة من
 //    المزامنة الشاملة برسالة مبهمة.
-async function shopifyGQL(env, token, query, variables = {}, opName = 'shopify') {
+// ⑮ تكلفة الاستعلام — throttleStatus (الرصيد المتبقي) + actualQueryCost (النداء كلّف قد إيه)
+//    للقياس بس: صفر اعتماد من الواجهة عليهم. costLog اختياري لتجميع تفصيل لكل استعلام.
+let _lastThrottle  = null;
+let _lastQueryCost = null;
+
+async function shopifyGQL(env, token, query, variables = {}, opName = 'shopify', costLog = null) {
   const MAX_ATTEMPTS = 3;
   let lastErr = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let resp, text;
     try {
-      resp = await fetch(`https://${env.SHOP_DOMAIN}/admin/api/2026-01/graphql.json`, {
+      resp = await fetch(`https://${env.SHOP_DOMAIN}/admin/api/2026-10/graphql.json`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
         body:    JSON.stringify({ query, variables }),
@@ -218,6 +243,12 @@ async function shopifyGQL(env, token, query, variables = {}, opName = 'shopify')
     }
 
     if (!data.data) throw new Error(`${opName}: رد شوبيفاي بدون data — ${text.slice(0, 180)}`);
+    const cost = data.extensions?.cost;
+    if (cost) {
+      if (cost.throttleStatus) _lastThrottle = cost.throttleStatus;
+      _lastQueryCost = { op: opName, requested: cost.requestedQueryCost ?? null, actual: cost.actualQueryCost ?? null };
+      if (costLog) costLog.push({ ..._lastQueryCost });
+    }
     return data;
   }
   throw lastErr || new Error(`${opName}: فشل غير معروف`);
@@ -737,9 +768,15 @@ export default {
           add(true, 'Shopify OAuth', 'التوكن اتجاب بنجاح');
           add(scopes.includes('read_products'), 'accessScopes',
             scopes.length ? scopes.join(', ') : '(فاضية — الأداة محتاجة read_products على الأقل)');
+          // ℹ️ read_all_orders: بدونها الأوردرات الأقدم من 60 يوم بترجع «غير موجود» بدل خطأ صلاحية.
+          //    الأداة دي مابتقراش أوردرات أصلاً، فالفحص معلومة مش شرط (shopify-graphql-helper §3.2).
+          add(true, 'read_all_orders', scopes.includes('read_all_orders') ? 'ممنوحة' : 'غير ممنوحة — مش مطلوبة للأداة دي (بتزامن أسعار variants مش أوردرات)');
           const t = d?.extensions?.cost?.throttleStatus;
           if (t) add(true, 'throttleStatus',
             `متاح ${t.currentlyAvailable} من ${t.maximumAvailable} · استرجاع ${t.restoreRate}/ث`);
+          const qc = d?.extensions?.cost;
+          if (qc) add(true, 'actualQueryCost',
+            `آخر نداء (${_lastQueryCost?.op || 'diagScopes'}) كلّف ${qc.actualQueryCost ?? '؟'} نقطة (المطلوب ${qc.requestedQueryCost ?? '؟'})`);
         } catch (e) { add(false, 'Shopify', `فشل: ${e.message}`); }
 
         // ⑤ WooCommerce — GET على variation مش موجود: **مفيش أي كتابة**.
@@ -1132,7 +1169,8 @@ async function runBulkSyncPage(env, cursor) {
       }
     }
   `;
-  const data = await shopifyGQL(env, token, query, { cursor }, 'productVariants');
+  const queryCost = [];
+  const data = await shopifyGQL(env, token, query, { cursor }, 'productVariants', queryCost);
   const conn = data?.data?.productVariants;
   // الفحص التالت: شوبيفاي ردّت 200 وبـ data، بس بلا الحمولة اللي طلبناها
   if (!conn) {
@@ -1183,6 +1221,7 @@ async function runBulkSyncPage(env, cursor) {
     // تكلفة الاستعلام معروضة — الاقتراب من سقف النقط مابيبانش غير بانفجار
     // دفعة كاملة (Step 5A ⑪ ④)
     throttleStatus: data?.extensions?.cost?.throttleStatus || null,
+    queryCost,   // ⑮ تفصيل لكل استعلام (للقياس بس)
     hasMore: conn.pageInfo.hasNextPage,
     nextCursor: conn.pageInfo.endCursor,
   };

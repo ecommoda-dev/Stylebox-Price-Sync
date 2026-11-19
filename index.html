@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <!-- skills: html-builder v7.0.0 · constants v2.1.0 — 12-09-2026 -->
+  <!-- skills: html-builder v9.1.0 · constants v6.0.0 — 18-11-2026 -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>مزامنة الأسعار — Stylebox — EcomModa</title>
@@ -19,8 +19,8 @@
   --border:         #e5e7eb;
   --border-strong:  #d1d5db;
   --text-primary:   #111827;
-  --text-secondary: #6b7280;
-  --text-muted:     #6b7280;
+  --text-secondary: #4b5563;
+  --text-muted:     #4b5563;
   --text-mid:       #374151;   /* بين primary و secondary */
   --accent:         #2563eb;
   --accent-light:   #eff6ff;
@@ -652,6 +652,28 @@ body {
 .order-link { font-family: var(--font-mono); font-weight: 600; color: var(--accent); text-decoration: none; }
 .order-link:hover { text-decoration: underline; }
 .order-num  { font-family: var(--font-mono); font-weight: 600; }
+/* ── Idle logout (§IDLE-JS) — banner + login notice ────────── */
+.idle-warn {
+  display: none; position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 9000;               /* فوق كل الـ modals (600) وتحت الـ toast — rule 17 */
+  width: min(92vw, 440px);
+  background: var(--amber-light); border: 1px solid var(--amber-border); color: var(--amber-dark);
+  border-radius: 12px; padding: 12px 14px; box-shadow: 0 6px 24px rgba(0,0,0,.18);
+  text-align: center; line-height: 1.7; font-weight: 800; font-size: 13px;
+}
+.idle-warn.visible { display: block; }
+.idle-warn .idle-ask { font-weight: 900; font-size: 14px; }
+.idle-warn button {
+  margin-top: 8px; min-height: 44px; padding: 0 22px; border: none; border-radius: 10px;
+  background: var(--accent); color: var(--on-accent);
+  font-family: var(--font-body); font-size: 14px; font-weight: 900; cursor: pointer;
+}
+.login-notice {
+  display: none; border-radius: 10px; border: 1px solid var(--amber-border);
+  background: var(--amber-light); color: var(--amber-dark);
+  padding: 9px 12px; font-size: 12px; font-weight: 800; text-align: center; line-height: 1.6;
+}
+.login-notice.visible { display: block; }
 </style>
 
 <!-- ══ HTML ══════════════════════════════════════════════════════ -->
@@ -723,8 +745,20 @@ body {
     <div class="eco-modal-body">
       <!-- Latest version — blue badge (النص من TOOL_VERSION) -->
       <div class="cl-version-block">
+          <div class="cl-version-row">
+            <span class="cl-ver-badge" id="clLatestBadge">v1.3.0</span>
+            <span class="cl-ver-date">18-11-2026</span>
+          </div>
+          <ul class="cl-items">
+            <li class="cl-item"><span class="cl-tag new">جديد</span><span>الخروج التلقائي بعد <b>60 دقيقة</b> من غير نشاط (بانر تحذير قبلها بدقيقة + زرار «أنا موجود»)، والخروج اليدوي بقى فوري بلا تأكيد. بيتأجّل تلقائيًا طول ما المزامنة الشاملة شغّالة.</span></li>
+            <li class="cl-item"><span class="cl-tag change">تغيير</span><span>اللون الثانوي للنصوص بقى أغمق (<code>#4b5563</code>) — أوضح على الخلفية الفاتحة.</span></li>
+            <li class="cl-item"><span class="cl-tag change">تغيير</span><span>🩺 فحص النظام بقى بيعرض كمان تكلفة آخر استعلام شوبيفاي (<code>actualQueryCost</code>) وحالة صلاحية <code>read_all_orders</code> (معلومة فقط).</span></li>
+            <li class="cl-item"><span class="cl-tag change">تغيير</span><span>الـ Worker اتحدّث لـ <code>v1.3.0</code>: شوبيفاي API <code>2026-10</code> + إعادة محاولة على التوكن المشترك. لا تغيير في سلوك المزامنة.</span></li>
+          </ul>
+        </div>
+        <div class="cl-version-block">
         <div class="cl-version-row">
-          <span class="cl-ver-badge" id="clLatestBadge">v1.2.0</span>
+          <span class="cl-ver-badge old">v1.2.0</span>
           <span class="cl-ver-date">12-09-2026</span>
         </div>
         <ul class="cl-items">
@@ -825,6 +859,7 @@ body {
           <h4>FEATURE MAP</h4>
           <ul>
             <li><code>§AUTH</code> — Universal D1 Auth (check_employee / register_pin / verify_employee / log_logout)</li>
+            <li><code>§IDLE-JS</code> — الخروج التلقائي لعدم النشاط (<code>IDLE_TIMEOUT_MIN = 60</code>) + <code>performLogout(reason)</code> (Standards #52)</li>
             <li><code>§TOOL-JS::bulkSync</code> — تشغيل مزامنة شاملة صفحة صفحة عن طريق <code>bulk_sync_all</code> + cursor</li>
             <li><code>§LOG-ENDPOINTS</code> — get_logs / get_logs_count / get_logs_export (فلترة + عدّ + ترتيب من السيرفر)</li>
             <li><code>§CONFIG::time</code> — توقيت القاهرة بـ <code>Intl</code> (مفيش إزاحة ثابتة)</li>
@@ -850,6 +885,7 @@ body {
             <li><code>bulkCursor / bulkPages / bulkScanned / bulkLinked</code> — حالة المزامنة الشاملة، في الذاكرة فقط (بترجع للصفر لو الصفحة اتقفلت أو حصل خطأ)</li>
             <li><code>TOOL_VERSION</code> — نسخة الواجهة، مصدر واحد بيملّي زرار الهيدر وبادج الـ Changelog</li>
             <li><code>MIN_WORKER_VERSION</code> — أقل نسخة Worker الواجهة دي بتشتغل معاها (مالهاش أي علاقة بـ TOOL_VERSION)</li>
+            <li><code>IDLE_TIMEOUT_MIN</code> — 60 دقيقة لكل الأدوات بلا استثناء (ممنوع تغييرها لأداة بعينها)</li>
             <li><code>LOG_PAGE_SIZE = 100</code> · <code>API_TIMEOUT_MS = 90000</code></li>
             <li><code>logParams()</code> — مصدر واحد لفلاتر السجل، بتستخدمه التلات نداءات</li>
           </ul>
@@ -894,6 +930,13 @@ body {
 </div>
 
 <!-- Toast Container -->
+<!-- Idle warning banner — §IDLE-JS (z-index 9000). النص بيتملا من JS. -->
+<div class="idle-warn" id="idleWarn" role="alert">
+  <div id="idleWarnText"></div>
+  <div class="idle-ask" id="idleWarnAsk"></div>
+  <button type="button" onclick="idleStay()">أنا موجود</button>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- ══ JS ════════════════════════════════════════════════════════ -->
@@ -936,6 +979,7 @@ body {
       </div>
 
       <!-- Alert — MUST stay OUTSIDE .pin-zone (visible in step 1 too) -->
+      <div class="login-notice" id="loginNotice"></div>
       <div class="login-alert" id="loginAlert"></div>
 
       <!-- PIN zone — STEP 2: hidden until an employee is selected -->
@@ -1251,7 +1295,7 @@ body {
 // ── Config ────────────────────────────────────────────────────
 // نسخة الواجهة — مصدر **واحد** بيملّي زرار الهيدر وبادج الـ Changelog عن طريق
 // renderVersionUI(). (نص النسخة في شاشة الدخول — Standards #24 — لسه مطلوب.)
-const TOOL_VERSION = '1.2.0';
+const TOOL_VERSION = '1.3.0';
 
 // عدد الـ variants في صفحة المزامنة الشاملة — **للعرض في نافذة التأكيد بس**.
 // السلطة الحقيقية BULK_SYNC_PAGE_SIZE في الـ Worker؛ لو اتغيّرت هناك، الرقم
@@ -1897,6 +1941,8 @@ document.addEventListener('keydown', e => {
 async function finishLogin(username, displayName) {
   currentEmployee = { username, displayName };
   document.getElementById('loginOverlay').classList.add('hidden');
+  hideLoginNotice();
+  idleStart();                       // §IDLE-JS — يبدأ عدّاد عدم النشاط (60 د)
   showToast(`أهلاً ${displayName} 👋`, 'success');
   playBeep('success');
 
@@ -1907,8 +1953,9 @@ async function finishLogin(username, displayName) {
 
 // ── Logout ────────────────────────────────────────────────────
 // ⚠️ Customize: add tool-specific reset after the base behavior below
-async function doLogout() {
-  if (!confirm('تسجيل الخروج؟')) return;
+// reason: 'manual' | 'idle' — نفس المسار للاتنين (Standards #52)
+function performLogout(reason) {
+  idleStop();
 
   // Log logout event to D1
   if (currentEmployee) {
@@ -1937,7 +1984,96 @@ async function doLogout() {
   // ──────────────────────────────────────────────────────────
 
   document.getElementById('loginOverlay').classList.remove('hidden');
+  if (reason === 'idle') showLoginNotice('تم تسجيل خروج تلقائي لعدم النشاط');
 }
+
+// ── الخروج اليدوي: فوري بلا أي تأكيد (confirm ممنوع — Standards #52) ──
+// الضغط على اسم الموظف في الهيدر بيطلّع. حارس الدفعة مش تأكيد.
+function doLogout() {
+  if (!currentEmployee) return;
+  if (isIdleBlocked()) {
+    showToast('فيه عملية بتتنفّذ دلوقتي — استنى لحد ما تخلص', 'warning');
+    return;
+  }
+  performLogout('manual');
+}
+
+function showLoginNotice(msg) {
+  const el = document.getElementById('loginNotice');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('visible');
+}
+function hideLoginNotice() {
+  document.getElementById('loginNotice')?.classList.remove('visible');
+}
+
+// ══════════════════════════════════════════════════════════════
+// §IDLE-JS — الخروج التلقائي لعدم النشاط (Standards #52)
+// القاعدة: 60 دقيقة لكل الأدوات من غير استثناء. التفاصيل: references/idle-logout.md
+// ══════════════════════════════════════════════════════════════
+const IDLE_TIMEOUT_MIN  = 60;     // ← ثابت موحّد — ممنوع تغييره لأداة بعينها
+const IDLE_WARN_SEC     = 60;     // التحذير قبل الخروج بدقيقة
+const IDLE_CHECK_MS     = 30000;  // فحص كل 30 ثانية (مقارنة وقت فعلي — مش setTimeout واحد طويل)
+const IDLE_THROTTLE_MS  = 10000;  // أقصى تكرار لتسجيل النشاط (السكانر بيبعت ضغطات متتالية)
+let   idleLastActivity  = Date.now();
+let   idleTicker        = null;
+let   idleFastTicker    = null;   // عدّ تنازلي كل ثانية طول ما البانر ظاهر
+
+// ← CUSTOMIZE: true طول ما فيه دفعة/عملية شغّالة (isUpdating / setUpdateLock)
+function isIdleBlocked() {
+  return (typeof isUpdating !== 'undefined' && !!isUpdating) || (typeof bulkRunning !== 'undefined' && !!bulkRunning);
+}
+
+function idleMark() {
+  const now = Date.now();
+  if (now - idleLastActivity < IDLE_THROTTLE_MS) return;
+  idleLastActivity = now;
+  idleHideWarn();
+}
+// أحداث حقيقية بس — mousemove ممنوع، والـ polling/network مابيعدّش نشاط
+['keydown', 'pointerdown', 'wheel', 'touchstart', 'scroll'].forEach(ev =>
+  document.addEventListener(ev, idleMark, { capture: true, passive: true })
+);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) idleTick(); });
+window.addEventListener('focus', idleTick);
+
+function idleStart() {
+  idleLastActivity = Date.now();
+  clearInterval(idleTicker);
+  idleTicker = setInterval(idleTick, IDLE_CHECK_MS);
+}
+function idleStop() {
+  clearInterval(idleTicker);
+  idleTicker = null;
+  idleHideWarn();
+}
+function idleStay() {                 // زرار "أنا موجود"
+  idleLastActivity = Date.now();
+  idleHideWarn();
+}
+function idleTick() {
+  if (!currentEmployee) return;
+  const limit = IDLE_TIMEOUT_MIN * 60000;
+  if (isIdleBlocked()) { idleLastActivity = Date.now(); idleHideWarn(); return; }
+  const idleMs = Date.now() - idleLastActivity;
+  if (idleMs >= limit) { performLogout('idle'); return; }
+  const remainMs = limit - idleMs;
+  if (remainMs <= IDLE_WARN_SEC * 1000) idleShowWarn(Math.ceil(remainMs / 1000));
+  else idleHideWarn();
+}
+function idleShowWarn(sec) {
+  document.getElementById('idleWarnText').textContent = `سيتم تسجيل الخروج لعدم النشاط بعد ${sec} ثانية`;
+  document.getElementById('idleWarnAsk').textContent  = `هل أنت موجود يا ${currentEmployee ? currentEmployee.displayName : ''}؟`;
+  document.getElementById('idleWarn').classList.add('visible');
+  if (!idleFastTicker) idleFastTicker = setInterval(idleTick, 1000);
+}
+function idleHideWarn() {
+  document.getElementById('idleWarn')?.classList.remove('visible');
+  clearInterval(idleFastTicker);
+  idleFastTicker = null;
+}
+
 
 // ── Settings button state (red/green) ─────────────────────────
 // ⚠️ الاسم الموحّد **بدون** State في الآخر — الاسم القديم

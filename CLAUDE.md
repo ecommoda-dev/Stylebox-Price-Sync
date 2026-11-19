@@ -2,7 +2,7 @@
 
 # مزامنة أسعار Stylebox (`Stylebox-Price-Sync`)
 
-![version](https://img.shields.io/badge/version-v1.2.1-blue)
+![version](https://img.shields.io/badge/version-v1.3.0-blue)
 
 **بتعمل إيه:** بتستقبل ويبهوك `PRODUCTS_UPDATE` من Shopify وبتزامن سعر أي
 variant مربوط بـ `custom.wordpress_variation_id` مع WooCommerce (stylebox.online)
@@ -181,6 +181,18 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 مفيش نسخ HTML مرقّمة قديمة في الريبو وقت النقل — Index.html نسخة واحدة بس.
 ```
 
+## مواءمة 18-11-2026 — Worker v1.3.0 · الواجهة v1.3.0
+
+> مواءمة مع إصدارات المهارات الحالية (`worker-builder` v4.0.0 · `html-builder` v9.1.0 · `constants` v6.0.0 · `shopify-graphql-helper` v3.0.1 · `woocommerce-sync-helper` v2.1.0). **صفر تغيير في منطق المزامنة.**
+
+| الحاجة | قبل | بعد |
+|---|---|---|
+| إصدار Shopify API | `2026-01` | **`2026-10`** — وثيقة `productVariants` اتفحصت على Shopify MCP (مفيش `barcode` ولا ميوتيشن محتاجة `@idempotent` في الأداة) |
+| `getAccessToken` | محاولة واحدة | **3 محاولات + backoff** (`OAUTH_MAX_ATTEMPTS`) — التوكن مشترك بين كل Workers الستاك |
+| تكلفة الاستعلام | `throttleStatus` بس | + `actualQueryCost` في `diag` و`queryCost` تفصيلي في `bulk_sync_all` (للقياس بس) |
+| `diag` | — | + صف `read_all_orders` (معلومة، مش شرط — الأداة مابتقراش أوردرات) |
+| الواجهة | خروج يدوي بـ`confirm` · مفيش خروج تلقائي | **خروج تلقائي 60 د** (بيتأجّل أثناء المزامنة الشاملة) + خروج يدوي فوري · لون النص الثانوي `#4b5563` |
+
 ## بصمة المهارات
 
 > الصيغة والقواعد والمهارات اللي بتدخل الجدول → `ecommoda-skill-versioning`
@@ -188,22 +200,20 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 | المهارة | الإصدار وقت آخر تعديل |
 |---|---|
-| ecommoda-worker-builder | v3.7.0 |
-| ecommoda-html-builder | v7.0.0 |
-| ecommoda-constants | v3.1.0 |
+| ecommoda-worker-builder | v4.0.0 |
+| ecommoda-html-builder | v9.1.0 |
+| ecommoda-constants | v6.0.0 |
+| shopify-graphql-helper | v3.0.1 |
+| woocommerce-sync-helper | v2.1.0 |
 
-آخر مطابقة: 24-09-2026 · `index.js` v1.2.1 · `index.html` v1.2.0
+آخر مطابقة: 18-11-2026 · `index.js` v1.3.0 · `index.html` v1.3.0
 🔴 معلّقة:
 - 🟡 **٤٥٠ صف `sku_mismatch`** في خط الأساس القديم — رقم كبير نسبيًا لأداة
   شغّالة بانتظام، ومش مشكلة كود. (أغلب الصفوف دي اتمسحت في تنظيف 12-09،
   فالمراجعة بقت على الصفوف الجديدة.)
-- 🟡 **Build watch paths لسه على الافتراضي `*`** — راجع «مسائل مفتوحة» تحت.
-- 🟡 **نسخة `esc()` في قالب `ecommoda-html-builder` بتكسر فاحص الربط بتاع
-  المهارة نفسها** (`scripts/js-undef-check.js`): الـ tokenizer مابيعرفش
-  regex literals فـ `/"/g` و `/'/g` بيتقروا كبداية سلسلة نصية وبيبلعوا تعريفات
-  الدوال اللي بعدها. الأداة هنا بتستخدم صيغة `split/join` **بنفس الناتج
-  بالحرف** عشان الفحص يعدّي — البند مرصود للإبلاغ في المهارة، مش مشكلة في
-  الأداة.
+- 🟡 **Build watch paths** (chip لـ`index.js` وchip منفصل لـ`wrangler.toml`) — إعداد في داشبورد Cloudflare مش في الريبو، ماتأكدش منه من الجلسة دي.
+- 🟡 **شاشة السجل لسه على الشكل القديم (قسم فلاتر فوق الجدول — `S47`) ومن غير تحكم في عرض الأعمدة (`S51`)** — معيار الجداول الجديد (فلاتر في رأس العمود + قايمة `position:fixed` + مقبض سحب العرض، `data-table-standard.md` §2 و§9ب) إعادة تصميم كبيرة لشاشة تشغيل حيّة. اتأجّلت **بقرار مقصود** 18-11-2026 (المهارة نفسها بتصنّفها 🟡 «عند أول فتح، مش في حملة») عشان ما تتغيّرش من غير مراجعة بصرية حقيقية. تتعمل في جلسة مخصصة بـ `templates/24_data-table-section.html` + اختبار Playwright.
+- ⚠️ **اختبار حي لازم بعد النشر:** Worker على API `2026-10` — اضغط 🩺 فحص النظام (لازم `Shopify OAuth ✅`)، وبعدين غيّر سعر variant في شوبيفاي وتأكد إن صف `synced` اتكتب.
 
 > سطر **🔴 معلّقة** = أي بند كاسر **معروف ومتقرر تأجيله**، بسببه.
 > `— لا شيء` معناها مفيش. **بند 🔴 متأجل من غير ما يتكتب هنا = بند ضايع** —
@@ -217,6 +227,6 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 ---
 
-آخر تحديث: 24-09-2026 — تحديث `check-log-values.mjs` (يمسك object shorthand) + تسجيل الـ١٦ قيمة كاملة في `log-values.json` + الحارس الديناميكي (الطبقة ٥)
+آخر تحديث: 18-11-2026 — 23:51 — مواءمة مع المهارات الحالية (API 2026-10 · إعادة محاولة التوكن · قياس التكلفة · خروج تلقائي 60 د)
 
 </div>
