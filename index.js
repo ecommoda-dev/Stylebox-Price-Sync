@@ -1,5 +1,5 @@
 // EcomModa — Stylebox Price Sync (v1.4.0)
-// skills: worker-builder v4.2.0 · constants v6.0.1 · shopify-graphql-helper v3.2.0 · woocommerce-sync-helper v2.2.0 — 19-11-2026
+// skills: worker-builder v4.2.0 · constants v6.0.1 · shopify-graphql-helper v3.2.0 · woocommerce-sync-helper v2.2.0 — 21-11-2026
 
 // ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
@@ -9,7 +9,7 @@ const TOOL_NAME = 'stylebox_price_sync';
 
 // بيرجع من ?action=get_config — الواجهة بتقارنه بـ MIN_WORKER_VERSION عندها،
 // فـ Promote ناقص أو rollback بيبان بدل ما يفضل صامت.
-const WORKER_VERSION = '1.4.0';
+const WORKER_VERSION = '1.5.0';
 
 // ⚠️ TEMPORARY — bulk_sync_all (أضيفت [تاريخ اليوم]) لمرة واحدة/دورية لعمل
 // سحب شامل على كل الـ variants في شوبيفاي بدل ما ننتظر الويبهوك واحد واحد.
@@ -310,6 +310,7 @@ const LOG_REGISTRY = {
     'stale_event_skipped', 'no_triggered_at_header', 'invalid_price',
     'no_price_change_skipped', 'wp_variation_not_found', 'sku_mismatch',
     'gtin_mismatch', 'synced', 'wp_update_failed', 'rate_limited',
+    'logs_deleted',
   ]),
 };
 
@@ -415,6 +416,7 @@ function buildLogFilterSQL(select, {
   type        = null, types       = null,
   search      = null, searchNotes = null,
   dateFrom    = null, dateTo      = null,
+  untilTs     = null,   // مسح بس: ما يلمسش صفوف اتكتبت بعد لحظة تحميل الشاشة
 } = {}) {
   let sql = `${select} FROM logs WHERE type NOT IN ('login','logout')`;
   const b = [];
@@ -429,6 +431,7 @@ function buildLogFilterSQL(select, {
   if (searchNotes) { sql += ' AND notes LIKE ?';               b.push(`%${searchNotes}%`); }
   if (dateFrom)    { sql += ' AND substr(timestamp, 1, 10) >= ?'; b.push(dateFrom); }
   if (dateTo)      { sql += ' AND substr(timestamp, 1, 10) <= ?'; b.push(dateTo); }
+  if (untilTs)     { sql += ' AND timestamp <= ?';                b.push(untilTs); }
 
   return { sql, b };
 }
@@ -505,6 +508,37 @@ function logParamsFrom(url, tool) {
     dateTo:      url.searchParams.get('dateTo')      || null,
   };
 }
+// ══════════════════════════════════════════════════════
+// §LOG-DELETE — مسح صفوف السجل (v1.5.0)
+// ══════════════════════════════════════════════════════
+// 🔴 جدول `logs` **مشترك بين كل أدوات الستاك** — فكل DELETE هنا مقيّد بـ
+//    `tool = TOOL_NAME` من الكود (مش من العميل)، و`login`/`logout` مستثنيين
+//    دايمًا (نفس شرط buildLogFilterSQL). مفيش مسار بيمسح بدون tool.
+// ⚠️ مفيش تراجع (قرار تنظيف 12-09-2026 كان بلا نسخ احتياطية برضه) — عشان كده
+//    كل عملية بتسيب صف تدقيق `logs_deleted` بالعدد والفلاتر والموظف.
+const LOG_DELETE_ID_MAX     = 500;    // سقف الـ ids في النداء — الصفحة 100، فده هامش أمان
+const LOG_DELETE_FILTER_MAX = 5000;   // سقف المسح بالفلتر في النداء الواحد (الباقي بيرجع remaining)
+const LOG_DELETE_CHUNK      = 90;     // حد D1 = 100 bind parameter في الاستعلام الواحد
+
+async function deleteLogsByIds(db, tool, ids) {
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += LOG_DELETE_CHUNK) {
+    const part = ids.slice(i, i + LOG_DELETE_CHUNK);
+    const res = await db.prepare(
+      `DELETE FROM logs WHERE tool = ? AND type NOT IN ('login','logout') AND id IN (${part.map(() => '?').join(',')})`
+    ).bind(tool, ...part).run();
+    deleted += res.meta?.changes ?? 0;
+  }
+  return deleted;
+}
+
+async function deleteLogsByFilter(db, filters) {
+  const { sql, b } = buildLogFilterSQL('SELECT id', filters);
+  const res = await db.prepare(`DELETE FROM logs WHERE id IN (${sql} ORDER BY id LIMIT ?)`)
+    .bind(...b, LOG_DELETE_FILTER_MAX).run();
+  return res.meta?.changes ?? 0;
+}
+
 // ══════════════════════════════════════════════════════
 // END SHARED BLOCK
 // ══════════════════════════════════════════════════════
@@ -877,6 +911,70 @@ export default {
           ok: true, entries,
           cap: LOG_EXPORT_MAX, total, truncated: total > LOG_EXPORT_MAX,
         }, 200, request);
+      }
+
+      // 🔴 مسح السجل — POST بس. mode='ids' (المحدد) أو mode='filter' (كل المطابق
+      //    للفلاتر المعروضة). التأكيد بالأرقام مسؤولية الواجهة، والـ Worker بيحمي:
+      //    · tool مقفول من الكود · login/logout مستثنيين · الموظف لازم يكون نشط
+      //    · mode='filter': expectedTotal إلزامي، ولو المطابق فعلًا أكتر منه (السجل
+      //      اتغيّر بعد ما الشاشة اتحمّلت) → 409 ومفيش مسح. وuntilTs بيحمي الصفوف
+      //      الجديدة (ويبهوكات بتتكتب طول الوقت) من إنها تتمسح بدون ما حد يشوفها.
+      if (action === 'delete_logs') {
+        if (request.method !== 'POST') return json({ error: 'POST required' }, 405, request);
+        const body = await request.json().catch(() => ({}));
+        const employee = String(body.employee || '').trim();
+        if (!employee) return json({ ok: false, error: 'employee مطلوب' }, 400, request);
+        const emp = await env.DB.prepare('SELECT 1 AS ok FROM employees WHERE username = ? AND is_active = 1')
+          .bind(employee).first();
+        if (!emp) return json({ ok: false, error: 'الموظف غير موجود أو موقوف' }, 403, request);
+
+        let deleted = 0, remaining = 0, auditExtra;
+        if (body.mode === 'ids') {
+          const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number))]
+            .filter(n => Number.isInteger(n) && n > 0);
+          if (!ids.length) return json({ ok: false, error: 'ids فاضية' }, 400, request);
+          if (ids.length > LOG_DELETE_ID_MAX)
+            return json({ ok: false, error: `عدد كبير: ${ids.length} — الحد ${LOG_DELETE_ID_MAX}` }, 400, request);
+          deleted = await deleteLogsByIds(env.DB, TOOL_NAME, ids);
+          auditExtra = { mode: 'ids', requested: ids.length };
+        } else if (body.mode === 'filter') {
+          const f = body.filters && typeof body.filters === 'object' ? body.filters : {};
+          const list = (v) => String(v || '').split(',').map(s => s.trim()).filter(Boolean);
+          const untilTs = typeof body.untilTs === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(body.untilTs) ? body.untilTs : null;
+          const expected = Number(body.expectedTotal);
+          if (!untilTs) return json({ ok: false, error: 'untilTs مطلوب' }, 400, request);
+          if (!Number.isInteger(expected) || expected < 0) return json({ ok: false, error: 'expectedTotal مطلوب' }, 400, request);
+          const filters = {
+            tool: TOOL_NAME,
+            employees:   list(f.employees).length ? list(f.employees) : null,
+            types:       list(f.types).length     ? list(f.types)     : null,
+            search:      f.search      || null,
+            searchNotes: f.searchNotes || null,
+            dateFrom:    f.dateFrom    || null,
+            dateTo:      f.dateTo      || null,
+            untilTs,
+          };
+          const actual = await getLogsCount(env.DB, filters);
+          if (actual > expected) {
+            return json({ ok: false, error: `المطابق فعليًا (${actual}) أكتر من اللي ظهر على الشاشة (${expected}) — حدّث السجل وراجع قبل المسح`, actual, expected }, 409, request);
+          }
+          deleted = await deleteLogsByFilter(env.DB, filters);
+          remaining = Math.max(0, actual - deleted);
+          auditExtra = { mode: 'filter', filters: { ...f }, expected, matched: actual, untilTs };
+        } else {
+          return json({ ok: false, error: "mode لازم يكون 'ids' أو 'filter'" }, 400, request);
+        }
+
+        let logged = true, logError = null;
+        try {
+          await writeLog(env.DB, {
+            tool: TOOL_NAME, type: 'logs_deleted', employee,
+            delta: -deleted,
+            notes: `مسح ${deleted} صف من سجل العمليات`,
+            extra: { result: 'success', stage: 'write', deleted, remaining, ...auditExtra },
+          });
+        } catch (e) { logged = false; logError = e.message; }
+        return json({ ok: true, deleted, remaining, logged, ...(logError ? { logError } : {}) }, 200, request);
       }
       // ──────────────────────────────────────────────────────
 

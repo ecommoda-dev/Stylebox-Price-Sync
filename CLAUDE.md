@@ -2,14 +2,14 @@
 
 # مزامنة أسعار Stylebox (`Stylebox-Price-Sync`)
 
-![version](https://img.shields.io/badge/version-v1.4.0-blue)
+![version](https://img.shields.io/badge/version-v1.5.0-blue)
 
 **بتعمل إيه:** بتستقبل ويبهوك `PRODUCTS_UPDATE` من Shopify وبتزامن سعر أي
 variant مربوط بـ `custom.wordpress_variation_id` مع WooCommerce (stylebox.online)
 تلقائيًا، مع هامش سعر ثابت (`PRICE_DIFFERENCE`) وTriple-check (SKU + GTIN).
 فيها كمان مزامنة شاملة يدوية (`bulk_sync_all`) لكل الكتالوج صفحة صفحة.
 **مين بيستخدمها:** حسابات / إدارة المخزون — تشغيل تلقائي بالكامل، الواجهة للمراقبة والمزامنة الشاملة اليدوية بس.
-**الإصدار:** Worker `v1.4.0` · الواجهة `v1.4.0`   ← الاتنين مستقلين (v1.4.0 = حل الـ 429: دفعات + circuit breaker + استئناف). خط الأساس
+**الإصدار:** Worker `v1.5.0` · الواجهة `v1.5.0`   ← الاتنين مستقلين (v1.5.0 = مسح سجلات من شاشة السجل · v1.4.0 = حل الـ 429: دفعات + circuit breaker + استئناف). خط الأساس
 وقت النقل لـ git كان `v1.0.0`/`v1.0.0` (26-08-2026)؛ الرفع الحالي من جردة
 12-09-2026 (دفعات ١+٢+٣ في v1.1.0، ودفعات ٤+٥ في v1.2.0)، و`v1.2.1` (24-09-2026)
 بتاعة `check-log-values.mjs` المصلَّح + تسجيل الـ١٦ قيمة كاملة في
@@ -32,6 +32,7 @@ Step 7-ج).
 | `check_employee` / `register_pin` / `verify_employee` / `log_logout` / `get_employees` | Universal D1 Auth القياسي |
 | `bulk_sync_all` | صفحة واحدة (40 variant) من كل الكتالوج — بترجع `cursor` للصفحة الجاية. **v1.4.0:** بتتخطّى كاش «آخر مزامنة» (`force`) وبتبعت الصفحة على دفعتين (≈ نداءين لووردبريس). الرد: `ok` · `scanned` · `linked` · `results` (عدّادات الخمس مفردات) · `deferred` · `rateLimited` · `retryAfterSec` · `hasMore` · `nextCursor` · `done`. لو `rateLimited:true` فـ `nextCursor` = **نفس cursor الصفحة** والواجهة بتعيدها بعد انتظار |
 | `diag` | فحص ذاتي **بدون أي كتابة**: الأسرار (أسماء وأطوال بس) · `PRICE_DIFFERENCE` **بقيمتها** (var مش سر، وهي الفخ الموثّق تحت) · D1 والجدولين · شوبيفاي OAuth والصلاحيات و`throttleStatus` · endpoint ووردبريس القديم (GET على variation وهمي، 404 = شغّال والسر مقبول) **+ endpoint الدفعات** (`POST variation-prices` بـ `items: []` — **400 = شغّال**، `404` = السنيپت لسه ما اتلصقش، `401/403` = السر غلط) |
+| `delete_logs` | **(POST)** مسح صفوف من سجل العمليات. `mode:'ids'` (المحدد، ≤500) أو `mode:'filter'` (كل المطابق للفلاتر؛ `expectedTotal` + `untilTs` إلزاميين، سقف 5000 في النداء ويرجّع `remaining`). مقيّد بـ `tool` الأداة من الكود، وlogin/logout مستثنيين، والموظف لازم نشط. المطابق فعليًا > `expectedTotal` → **409** ومفيش مسح. **مفيش تراجع** — كل عملية بتكتب صف `logs_deleted`. الرد: `ok` · `deleted` · `remaining` · `logged` |
 | `get_config` | نسخة الـ Worker (`WORKER_VERSION`) — الواجهة بتقارنها بـ `MIN_WORKER_VERSION` عندها وبتحذّر لو الـ Worker أقدم (Promote ناقص / rollback) |
 | `get_logs` / `get_logs_count` / `get_logs_export` | سجل العمليات — فلترة وعدّ وترتيب **كلهم server-side**. الفلاتر المقبولة على التلاتة بنفس المجموعة: `employees` · `types` (CSV) · `search` (بيدوّر في **`sku`**) · `searchNotes` · `dateFrom` · `dateTo` · `sortBy`/`sortDir` (على `get_logs` بس). و`get_logs_export` بيرجّع `cap` و`total` و`truncated` جنب الصفوف |
 
@@ -59,7 +60,7 @@ tool  : stylebox_price_sync
 type  : synced · no_price_change_skipped · not_linked_yet · stale_event_skipped ·
         sku_mismatch · gtin_mismatch · wp_variation_not_found · wp_update_failed ·
         invalid_price · invalid_variant · empty_payload_bug · no_triggered_at_header ·
-        hmac_failed · unexpected_error · rate_limited · login · logout
+        hmac_failed · unexpected_error · rate_limited · logs_deleted · login · logout
 ```
 
 > **`rate_limited`** (v1.4.0): `result=warning` · `stage=write` — صف **لكل variant** ما اتبعتش لأن WordPress رفض بـ 429. مش فشل: الحجز اترجّع والتحديث بيتأجّل (الشاملة بتلحقه).
@@ -74,6 +75,8 @@ type  : synced · no_price_change_skipped · not_linked_yet · stale_event_skipp
 > `log-values.json` بتاع الريبو ده، والدليل آلي: `node check-log-values.mjs`
 > (النسخة المصلَّحة — Step 7 في `ecommoda-worker-builder`) بيرجّع exit 0.
 > **الدليل من هنا فصاعدًا `log-values.json` نفسه، مش `CLAUDE.md`.**
+
+> **`logs_deleted`** (v1.5.0): `result=success` · `stage=write` — صف تدقيق واحد لكل عملية مسح من الواجهة (`delta` = −العدد، `extra` فيه `mode` والفلاتر والعدد). الصفوف المتمسوحة نفسها **مفيش نسخة احتياطية منها** — الصف ده هو الأثر الوحيد.
 
 > ⚠️ **جدول D1 إضافي:** `stylebox_price_sync_state` (`variant_id` PK ·
 > `last_triggered_at` · `last_synced_regular_price` · `last_synced_sale_price` ·
@@ -225,7 +228,7 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 | shopify-graphql-helper | v3.2.0 |
 | woocommerce-sync-helper | v2.2.0 |
 
-آخر مطابقة: 19-11-2026 · `index.js` v1.4.0 · `index.html` v1.4.0
+آخر مطابقة: 21-11-2026 · `index.js` v1.5.0 · `index.html` v1.5.0
 🔴 معلّقة:
 - 🟡 **طابور D1 + Cron للويبهوك = مؤجل** (Tier 4، خارج نطاق v1.4.0): ويبهوك اتّرفض بـ 429 بيضيع (صف `rate_limited` + الشاملة بتلحقه). بيتعمل بس لو أحمد طلب.
 - 🟡 **`PRICE_DIFFERENCE`: تعارض بين الوثائق والـ `wrangler.toml`** — `CLAUDE.md` فوق بيقول `100` متأكَّدة من D1 (26-08-2026)، و`wrangler.toml` فيه `"0"`. اتلاحظ في جلسة v1.4.0 ومالمستوش — تحقق من 🩺 فحص النظام (بيعرض القيمة الفعلية) قبل أول مزامنة شاملة.
@@ -235,6 +238,7 @@ variants متتبَّعة في stylebox_price_sync_state: 801
   فالمراجعة بقت على الصفوف الجديدة.)
 - 🟡 **Build watch paths** (chip لـ`index.js` وchip منفصل لـ`wrangler.toml`) — إعداد في داشبورد Cloudflare مش في الريبو، ماتأكدش منه من الجلسة دي.
 - 🟡 **شاشة السجل لسه على الشكل القديم (قسم فلاتر فوق الجدول — `S47`) ومن غير تحكم في عرض الأعمدة (`S51`)** — معيار الجداول الجديد (فلاتر في رأس العمود + قايمة `position:fixed` + مقبض سحب العرض، `data-table-standard.md` §2 و§9ب) إعادة تصميم كبيرة لشاشة تشغيل حيّة. اتأجّلت **بقرار مقصود** 18-11-2026 (المهارة نفسها بتصنّفها 🟡 «عند أول فتح، مش في حملة») عشان ما تتغيّرش من غير مراجعة بصرية حقيقية. تتعمل في جلسة مخصصة بـ `templates/24_data-table-section.html` + اختبار Playwright.
+- ⚠️ **اختبار حي لازم بعد النشر (v1.5.0):** (١) `get_config` = `1.5.0` (Promote) · (٢) افتح السجل، حدّد صفّين وامسحهم، وراجع إن صف `logs_deleted` اتكتب · (٣) جرّب «مسح كل المطابق» بفلتر ضيّق جدًا الأول. **ملاحظة:** أي موظف نشط يقدر يمسح (مفيش نظام صلاحيات في الأداة) — لو عايز تقصره على حد معيّن قولّي.
 - ⚠️ **اختبار حي لازم بعد النشر (v1.4.0):** (١) الصق `wordpress/variation-prices-snippet.php` على الموقع **الأول** (قبل نشر الـ Worker) · (٢) `?action=diag` ← `WooCommerce batch endpoint` ✅ (400) · (٣) `get_config` = `1.4.0` · (٤) مزامنة شاملة صفحة واحدة ثم الكاملة، وراجع استعلامات السجل (صفر `WP GET failed`، `log_value_alerts` فاضي).
 - ⚠️ **اختبار حي لازم بعد النشر:** Worker على API `2026-10` — اضغط 🩺 فحص النظام (لازم `Shopify OAuth ✅`)، وبعدين غيّر سعر variant في شوبيفاي وتأكد إن صف `synced` اتكتب.
 
@@ -250,6 +254,6 @@ variants متتبَّعة في stylebox_price_sync_state: 801
 
 ---
 
-آخر تحديث: 20-11-2026 — 00:19 — v1.4.0: حل الـ 429 (endpoint دفعات + circuit breaker + استئناف تلقائي + الشاملة تتخطّى الكاش)
+آخر تحديث: 21-11-2026 — 23:10 — v1.5.0: مسح سجلات من شاشة السجل (المحدد / كل المطابق للفلاتر) + صف تدقيق `logs_deleted`
 
 </div>
