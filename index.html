@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <!-- skills: html-builder v9.1.1 · constants v6.0.1 — 19-11-2026 -->
+  <!-- skills: html-builder v9.1.1 · constants v6.0.1 — 21-11-2026 -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>مزامنة الأسعار — Stylebox — EcomModa</title>
@@ -565,6 +565,10 @@ body {
 .act-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-light);}
 .act-btn.export:hover{border-color:var(--green);color:var(--green);background:var(--green-light);}
 .act-btn:disabled{opacity:.5;cursor:not-allowed;}
+.act-btn.danger:hover{border-color:var(--red);color:var(--red);background:var(--red-light);}
+.sel-col{width:34px;padding-inline:6px !important;}
+.sel-col input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent);}
+.data-table tbody tr.row-selected{background:var(--accent-light);}
 .tbl-body-wrap{overflow:hidden;transition:max-height .3s ease;border-radius:0 0 var(--radius) var(--radius);}
 .tbl-body-wrap.collapsed{max-height:0;}
 .tbl-scroll{overflow-x:auto;}
@@ -746,7 +750,18 @@ body {
       <!-- Latest version — blue badge (النص من TOOL_VERSION) -->
       <div class="cl-version-block">
           <div class="cl-version-row">
-            <span class="cl-ver-badge" id="clLatestBadge">v1.4.0</span>
+            <span class="cl-ver-badge" id="clLatestBadge">v1.5.0</span>
+            <span class="cl-ver-date">21-11-2026</span>
+          </div>
+          <ul class="cl-items">
+            <li class="cl-item"><span class="cl-tag new">جديد</span><span>مسح سجلات من شاشة السجل: <b>🗑 مسح المحدد</b> (checkbox على كل صف + تحديد الصفحة) و<b>🗑 مسح كل المطابق للفلاتر</b>. التأكيد بالأرقام، والمسح نهائي.</span></li>
+            <li class="cl-item"><span class="cl-tag new">جديد</span><span>كل عملية مسح بتسيب صف تدقيق <code>logs_deleted</code> (الموظف · العدد · الفلاتر). الـ Worker <code>v1.5.0</code> مقيّد بسجلات الأداة دي بس ومابيمسحش login/logout، وبيرفض (409) لو المطابق فعليًا أكتر من المعروض.</span></li>
+            <li class="cl-item"><span class="cl-tag change">تغيير</span><span>الواجهة بتطلب Worker <code>1.5.0</code> على الأقل (<code>MIN_WORKER_VERSION</code>).</span></li>
+          </ul>
+        </div>
+        <div class="cl-version-block">
+          <div class="cl-version-row">
+            <span class="cl-ver-badge old">v1.4.0</span>
             <span class="cl-ver-date">19-11-2026</span>
           </div>
           <ul class="cl-items">
@@ -858,6 +873,7 @@ body {
             <tr><td><code>get_logs</code></td><td>صفحة واحدة من السجل (100 صف) — فلترة وترتيب وعدّ كلهم server-side</td></tr>
             <tr><td><code>get_logs_count</code></td><td>العدد الكلي المطابق للفلاتر — للصفحات وللأرقام على الشاشة</td></tr>
             <tr><td><code>get_logs_export</code></td><td>كل المطابق للفلاتر لحد السقف (2000) — بيرجّع <code>cap</code> و<code>total</code> و<code>truncated</code> عشان التقصّ يبان</td></tr>
+            <tr><td><code>delete_logs</code></td><td>(POST) مسح صفوف من السجل — <code>mode:'ids'</code> للمحدد أو <code>mode:'filter'</code> لكل المطابق للفلاتر (بحارس <code>expectedTotal</code> و<code>untilTs</code>). مقيّد بـ tool الأداة ومابيلمسش login/logout، وبيسجّل صف تدقيق <code>logs_deleted</code></td></tr>
             <tr><td><code>get_config</code></td><td>نسخة الـ Worker — الواجهة بتقارنها بـ <code>MIN_WORKER_VERSION</code></td></tr>
             <tr><td><code>diag</code></td><td>فحص ذاتي بدون أي كتابة — الأسرار (أسماء وأطوال بس) · <code>PRICE_DIFFERENCE</code> بقيمتها · D1 · شوبيفاي وصلاحياتها وتكلفة الاستعلام · endpoint ووردبريس</td></tr>
             <tr><td><code>/webhook</code></td><td>مسار الويبهوك (Shopify HMAC — مش Bearer)</td></tr>
@@ -880,6 +896,7 @@ body {
             <li><code>checkWorkerVersion</code> — تحذير لو نسخة الـ Worker أقدم من <code>MIN_WORKER_VERSION</code></li>
             <li><code>§LOG-JS::multiSelect</code> — فلاتر الاختيار المتعدد + chips</li>
             <li><code>§LOG-JS::sort</code> — الترتيب على رأس العمود (٣ حالات) بيتبعت للـ Worker</li>
+            <li><code>§LOG-JS::delete</code> — اختيار صفوف + مسح المحدد / مسح كل المطابق للفلاتر (تأكيد بالأرقام + قفل أثناء العملية)</li>
             <li><code>§LOG-JS::render</code> — جدول السجل + بادج النتيجة من <code>extra.result</code></li>
             <li><code>§SHELL-JS::askConfirm</code> — تأكيد بيوصف الأثر قبل أي كتابة</li>
             <li><code>§SHELL-JS::updateLock</code> — قفل الأزرار أثناء المزامنة الشاملة</li>
@@ -1261,6 +1278,10 @@ body {
         <button class="act-btn" onclick="event.stopPropagation(); reloadLogFromFirstPage();">↺ تحديث</button>
         <button class="act-btn export" id="logExportBtn"
           onclick="event.stopPropagation(); exportLogXLSX();">⬇ تصدير المطابق للفلاتر .xlsx</button>
+        <button class="act-btn danger" id="logDeleteSelBtn" disabled
+          onclick="event.stopPropagation(); deleteSelectedLogs();">🗑 مسح المحدد (0)</button>
+        <button class="act-btn danger" id="logDeleteAllBtn" disabled
+          onclick="event.stopPropagation(); deleteMatchingLogs();">🗑 مسح كل المطابق للفلاتر</button>
       </div>
     </div>
 
@@ -1272,6 +1293,7 @@ body {
         <table class="data-table" id="logTable">
           <thead>
             <tr>
+              <th class="sel-col"><input type="checkbox" id="logSelAll" onchange="toggleLogSelectAll(this.checked)"></th>
               <!-- ⚠️ data-sort-key لازم يطابق LOG_SORT_COLUMNS في الـ Worker حرفيًا -->
               <th class="sortable-th" data-sort-key="date"     onclick="toggleLogSort('date')">التاريخ<span class="sort-icon" data-sort-key="date"></span></th>
               <th class="sortable-th" data-sort-key="time"     onclick="toggleLogSort('time')">الوقت<span class="sort-icon" data-sort-key="time"></span></th>
@@ -1284,7 +1306,7 @@ body {
             </tr>
           </thead>
           <tbody id="logTableBody">
-            <tr><td colspan="8"><div class="log-empty">اضغط تحديث لتحميل السجل</div></td></tr>
+            <tr><td colspan="9"><div class="log-empty">اضغط تحديث لتحميل السجل</div></td></tr>
           </tbody>
         </table>
       </div>
@@ -1312,7 +1334,7 @@ body {
 // ── Config ────────────────────────────────────────────────────
 // نسخة الواجهة — مصدر **واحد** بيملّي زرار الهيدر وبادج الـ Changelog عن طريق
 // renderVersionUI(). (نص النسخة في شاشة الدخول — Standards #24 — لسه مطلوب.)
-const TOOL_VERSION = '1.4.0';
+const TOOL_VERSION = '1.5.0';
 
 // عدد الـ variants في صفحة المزامنة الشاملة — **للعرض في نافذة التأكيد بس**.
 // السلطة الحقيقية BULK_SYNC_PAGE_SIZE في الـ Worker؛ لو اتغيّرت هناك، الرقم
@@ -1337,7 +1359,7 @@ const BULK_PAGE_GAP_MS  = 1500;
 //    Worker أقدم **مش هيرجّع خطأ**، هيرجّع
 //    undefined في صمت → رسالة نجاح على تصدير مقصوص. عشان كده الحارس إلزامي
 //    في نفس التسليم اللي بيضيف القراءة.
-const MIN_WORKER_VERSION = '1.4.0';
+const MIN_WORKER_VERSION = '1.5.0';
 
 // 🔴 رابط الـ Worker **ثابت في الكود**، مش حقل إعدادات ولا localStorage:
 //    الرابط مش سر (الحماية في WORKER_SECRET + CORS allowlist)، واسم الـ Worker
@@ -1439,6 +1461,7 @@ function setUpdateLock(on) {
     const el = document.getElementById(id);
     if (el) el.disabled = on;
   });
+  if (typeof updateLogDeleteBtns === 'function') updateLogDeleteBtns();
 }
 
 // ── §SHELL-JS::diag — الفحص الذاتي ──────────────────────────
@@ -2711,11 +2734,14 @@ function clearLogFilters() {
 async function loadLog() {
   updateFilterIconState();
   const body = document.getElementById('logTableBody');
-  body.innerHTML = '<tr><td colspan="8"><div class="log-empty"><div class="loading-spinner"></div><p style="margin-top:8px;font-size:12px;">جاري التحميل...</p></div></td></tr>';
+  body.innerHTML = '<tr><td colspan="9"><div class="log-empty"><div class="loading-spinner"></div><p style="margin-top:8px;font-size:12px;">جاري التحميل...</p></div></td></tr>';
   document.getElementById('logFilteredCount').textContent = '—';
 
   const base   = logParams();
   const offset = (logCurrentPage - 1) * LOG_PAGE_SIZE;
+  // لحظة التحميل — المسح بالفلتر مايلمسش صفوف اتكتبت بعدها (ويبهوكات جديدة)
+  const loadStartedAt = new Date().toISOString();
+  logSelected.clear();
   // ⚠️ الإجمالي بلا فلاتر مايتكاششش: الأداة بتكتب صفوف جديدة كل ويبهوك. ولو
   //    مفيش فلاتر أصلاً فالعدّين نفس الاستعلام — فبنوفّر النداء التالت.
   const hasFilters = Object.keys(base).length > 0;
@@ -2736,14 +2762,17 @@ async function loadLog() {
     logTotalAll      = hasFilters ? (allData?.total || 0) : logTotalFiltered;
     logRows          = pageData.entries || [];
     logLoaded        = true;
+    logLoadedAt      = loadStartedAt;
+    logLoadedParams  = base;
 
     document.getElementById('logTotalCount').textContent    = logTotalAll.toLocaleString('en-US');
     document.getElementById('logFilteredCount').textContent = logTotalFiltered.toLocaleString('en-US');
     renderLogTable(logRows);
     renderPagination();
     updateLogExportBtn();
+    updateLogDeleteBtns();
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="8"><div class="log-empty">⚠️ ${esc(e.message)}</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="9"><div class="log-empty">⚠️ ${esc(e.message)}</div></td></tr>`;
     document.getElementById('logTotalCount').textContent = '—';
     document.getElementById('paginationRow').style.display = 'none';
   }
@@ -2778,7 +2807,8 @@ function goPage(dir) {
 function renderLogTable(entries) {
   const body = document.getElementById('logTableBody');
   if (!entries.length) {
-    body.innerHTML = '<tr><td colspan="8"><div class="log-empty">لا توجد نتائج تطابق الفلاتر المحددة</div></td></tr>';
+    body.innerHTML = '<tr><td colspan="9"><div class="log-empty">لا توجد نتائج تطابق الفلاتر المحددة</div></td></tr>';
+    syncLogSelAll();
     return;
   }
   // 🔴 كل قيمة جاية من الـ API بتعدّي على esc() — حقل notes جواه نص خطأ
@@ -2797,7 +2827,9 @@ function renderLogTable(entries) {
       prices = b + ' ← ' + a;
     }
     const skuCell = e.sku ? `<span class="log-sku-badge">${esc(e.sku)}</span>` : '—';
-    return `<tr>
+    const sel = logSelected.has(e.id);
+    return `<tr class="${sel ? 'row-selected' : ''}">
+      <td class="sel-col"><input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleLogRow(${Number(e.id)}, this.checked)"></td>
       <td class="td-mono">${ts ? esc(formatDate(ts)) : '—'}</td>
       <td class="td-mono">${ts ? esc(formatTimeOnly(ts)) : '—'}</td>
       <td>${e.employee ? esc(e.employee.replace(/_/g,' ')) : '—'}</td>
@@ -2808,6 +2840,98 @@ function renderLogTable(entries) {
       <td class="td-notes">${esc(e.notes || '')}</td>
     </tr>`;
   }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// §LOG-JS::delete — مسح المحدد / مسح كل المطابق للفلاتر
+// 🔴 مفيش تراجع. الـ Worker بيحمي (tool مقفول · login/logout مستثنيين · 409 لو
+//    المطابق فعليًا أكتر من المعروض)، والواجهة بتأكّد بالأرقام وبتقفل أثناء أي عملية.
+// ⚠️ selection بيتمسح مع أي تحميل جديد (صفحة/فلتر/ترتيب) — الصفوف المحددة لازم
+//    تكون دايمًا قدام عين الموظف وقت المسح.
+// ══════════════════════════════════════════════════════════════
+const logSelected = new Set();   // ids الصفوف المحددة في الصفحة الحالية
+let logLoadedAt = null, logLoadedParams = {};
+
+function logDeleteBusy() { return isUpdating || (typeof bulkRunning !== 'undefined' && bulkRunning); }
+
+function syncLogSelAll() {
+  const all = document.getElementById('logSelAll');
+  if (!all) return;
+  const n = logRows.length, k = logRows.filter(r => logSelected.has(r.id)).length;
+  all.checked = n > 0 && k === n;
+  all.indeterminate = k > 0 && k < n;
+}
+
+function updateLogDeleteBtns() {
+  const sel = document.getElementById('logDeleteSelBtn'), allBtn = document.getElementById('logDeleteAllBtn');
+  if (!sel || !allBtn) return;
+  const busy = logDeleteBusy();
+  sel.textContent = `🗑 مسح المحدد (${logSelected.size.toLocaleString('en-US')})`;
+  sel.disabled    = busy || logSelected.size === 0;
+  allBtn.textContent = logTotalFiltered
+    ? `🗑 مسح كل المطابق للفلاتر (${logTotalFiltered.toLocaleString('en-US')})`
+    : '🗑 مسح كل المطابق للفلاتر';
+  allBtn.disabled = busy || !logTotalFiltered;
+}
+
+function toggleLogRow(id, on) {
+  if (on) logSelected.add(id); else logSelected.delete(id);
+  const cb = document.querySelector(`#logTableBody input[onchange*="toggleLogRow(${id},"]`);
+  if (cb) cb.closest('tr').classList.toggle('row-selected', on);
+  syncLogSelAll(); updateLogDeleteBtns();
+}
+
+function toggleLogSelectAll(on) {
+  logRows.forEach(r => { if (on) logSelected.add(r.id); else logSelected.delete(r.id); });
+  renderLogTable(logRows); syncLogSelAll(); updateLogDeleteBtns();
+}
+
+async function runLogDelete(payload, doneLabel) {
+  setUpdateLock(true);
+  try {
+    const data = await apiPost('delete_logs', { employee: currentEmployee.username, ...payload });
+    const rem = data.remaining ? ` — باقي ${data.remaining.toLocaleString('en-US')} مطابق (كرّر المسح)` : '';
+    showToast(`🗑 ${doneLabel}: اتمسح ${(data.deleted || 0).toLocaleString('en-US')} صف${rem}`,
+      data.remaining ? 'warning' : 'success', 6000);
+    if (data.logged === false) showToast('⚠️ المسح تم لكن صف التدقيق ما اتسجلش: ' + (data.logError || ''), 'warning', 8000);
+  } catch (err) {
+    showToast('تعذّر المسح: ' + err.message, 'error', 8000);
+  } finally {
+    setUpdateLock(false);
+    logSelected.clear();
+    reloadLogFromFirstPage();
+  }
+}
+
+async function deleteSelectedLogs() {
+  if (logDeleteBusy() || !currentEmployee || !logSelected.size) return;
+  const ids = [...logSelected];
+  const ok = await askConfirm({
+    header: '🗑 تأكيد مسح السجلات',
+    lead: `هتمسح ${ids.length.toLocaleString('en-US')} صف من سجل العمليات:`,
+    lines: [
+      { text: `🚫 المسح نهائي — مفيش تراجع ولا نسخة احتياطية` },
+      { text: 'هيتسجّل صف تدقيق باسمك وبعدد الصفوف', soft: true },
+    ],
+    okLabel: `تأكيد — امسح ${ids.length.toLocaleString('en-US')} صف`,
+  });
+  if (!ok) return;
+  await runLogDelete({ mode: 'ids', ids }, 'مسح المحدد');
+}
+
+async function deleteMatchingLogs() {
+  if (logDeleteBusy() || !currentEmployee || !logTotalFiltered || !logLoadedAt) return;
+  const n = logTotalFiltered, noFilters = Object.keys(logLoadedParams).length === 0;
+  const lines = [{ text: '🚫 المسح نهائي — مفيش تراجع ولا نسخة احتياطية' }];
+  if (noFilters) lines.unshift({ text: '⚠️ مفيش أي فلتر شغّال — ده معناه مسح سجل الأداة كله' });
+  lines.push({ text: 'الصفوف اللي اتكتبت بعد تحميل الشاشة دي مش هتتمسح', soft: true });
+  const ok = await askConfirm({
+    header: '🗑 تأكيد مسح كل المطابق للفلاتر',
+    lead: `هتمسح ${n.toLocaleString('en-US')} صف هما اللي ظاهرين في «النتائج» دلوقتي:`,
+    lines, okLabel: `تأكيد — امسح ${n.toLocaleString('en-US')} صف`,
+  });
+  if (!ok) return;
+  await runLogDelete({ mode: 'filter', filters: logLoadedParams, expectedTotal: n, untilTs: logLoadedAt }, 'مسح المطابق للفلاتر');
 }
 
 // ══════════════════════════════════════════════════════════════
